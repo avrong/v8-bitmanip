@@ -1989,6 +1989,9 @@ DEFINE_BOOL(riscv_c_extension, false,
             "enable compressed extension isa variant (RISCV only)")
 DEFINE_BOOL(riscv_b_extension, false,
             "enable B extension isa variant (RISCV only)")
+
+DEFINE_BOOL(riscv_bitmanip, false,
+            "enable bitmanip extension instructions")
 #endif
 
 // Controlling source positions for Torque/CSA code.
