@@ -1404,6 +1404,16 @@ void MacroAssembler::Ror(Register rd, Register rs, const Operand& rt) {
 }
 
 void MacroAssembler::Dror(Register rd, Register rs, const Operand& rt) {
+  if (v8_flags.riscv_bitmanip) {
+    if (rt.is_reg()) {
+      ror(rd, rs, rt.rm());
+    } else {
+      rori(rd, rs, rt.immediate());
+    }
+
+    return;
+  }
+
   UseScratchRegisterScope temps(this);
   Register scratch = temps.Acquire();
   BlockTrampolinePoolScope block_trampoline_pool(this);
@@ -1466,6 +1476,16 @@ void MacroAssembler::Srl32(Register rd, Register rs, const Operand& rt) {
 }
 
 void MacroAssembler::Ror(Register rd, Register rs, const Operand& rt) {
+  if (v8_flags.riscv_bitmanip) {
+    if (rt.is_reg()) {
+      ror(rd, rs, rt.rm());
+    } else {
+      rori(rd, rs, rt.immediate());
+    }
+
+    return;
+  }
+
   UseScratchRegisterScope temps(this);
   Register scratch = temps.Acquire();
   BlockTrampolinePoolScope block_trampoline_pool(this);
