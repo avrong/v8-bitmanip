@@ -4988,6 +4988,23 @@ void Simulator::DecodeRVIType() {
       }
       break;
     }
+      // TODO(riscv): use Zbb Standard Extension macro block
+    case RO_ROR: {
+      int64_t shamt = rs2() & (xlen - 1);
+      set_rd((rs1() >> shamt) | (rs1() << (xlen - shamt)));
+
+      break;
+    }
+    case RO_RORI: {
+      int16_t shamt = shamt6();
+      if (shamt >= xlen) {
+        shamt = shamt5();
+      }
+      require(shamt < xlen);
+      set_rd((rs1() >> shamt) | (rs1() << (xlen - shamt)));
+
+      break;
+    }
       // TODO(riscv): use Zifencei Standard Extension macro block
     case RO_FENCE_I: {
       // spike: flush icache.
