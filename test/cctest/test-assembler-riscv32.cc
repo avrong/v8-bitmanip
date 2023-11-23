@@ -476,6 +476,13 @@ UTEST_R1_FORM_WITH_RES_F(fneg_s, float, 23.5f, -23.5f)
 // UTEST_R1_FORM_WITH_RES_F(fabs_d, double, -23.5, 23.5)
 // UTEST_R1_FORM_WITH_RES_F(fneg_d, double, 23.5, -23.5)
 
+// -- RVZbb Standard Extension --
+UTEST_R2_FORM_WITH_RES(rol, uint32_t, 16, 2, 64)
+UTEST_R2_FORM_WITH_RES(ror, uint32_t, 16, 2, 4)
+UTEST_I_FORM_WITH_RES(rori, uint32_t, 16, 2, 4)
+UTEST_R1_FORM_WITH_RES(orcb, uint32_t, uint32_t, 0x10010011, 0xFFFF00FF)
+UTEST_R1_FORM_WITH_RES(rev8, uint32_t, uint32_t, 0x12344321, 0x21433412)
+
 // Test fmv_d
 TEST(RISCV_UTEST_fmv_d_double) {
   CcTest::InitializeVM();

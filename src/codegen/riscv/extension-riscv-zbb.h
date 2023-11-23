@@ -11,8 +11,16 @@ namespace internal {
 
 class AssemblerRISCVZbb : public AssemblerRiscvBase {
  public:
+  void rol(Register rd, Register rs1, Register rs2);
   void ror(Register rd, Register rs1, Register rs2);
   void rori(Register rd, Register rs1, uint8_t shamt);
+  void orcb(Register rd, Register rs);
+  void rev8(Register rd, Register rs);
+#ifdef V8_TARGET_ARCH_RISCV64
+  void rolw(Register rd, Register rs1, Register rs2);
+  void roriw(Register rd, Register rs1, uint8_t shamt);
+  void rorw(Register rd, Register rs1, Register rs2);
+#endif
 };
 
 }  // namespace internal

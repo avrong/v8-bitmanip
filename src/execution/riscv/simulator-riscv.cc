@@ -3647,6 +3647,30 @@ void Simulator::DecodeRVRType() {
     }
 #endif /*V8_TARGET_ARCH_RISCV64*/
       // TODO(riscv): End Add RISCV M extension macro
+    case RO_ROL: {
+      sreg_t shamt = rs2() & (xlen - 1);
+      set_rd((rs1() << shamt) | (rs1() >> (xlen - shamt)));
+      break;
+    }
+    case RO_ROR: {
+      sreg_t shamt = rs2() & (xlen - 1);
+      set_rd((rs1() >> shamt) | (rs1() << (xlen - shamt)));
+      break;
+    }
+#ifdef V8_TARGET_ARCH_RISCV64
+    case RO_ROLW: {
+      reg_t extz_rs1 = zext32(rs1());
+      sreg_t shamt = rs2() & 31;
+      set_rd(sext32((extz_rs1 << shamt) | (extz_rs1 >> (32 - shamt))));
+      break;
+    }
+    case RO_RORW: {
+      reg_t extz_rs1 = zext32(rs1());
+      sreg_t shamt = rs2() & 31;
+      set_rd(sext32((extz_rs1 >> shamt) | (extz_rs1 << (32 - shamt))));
+      break;
+    }
+#endif /*V8_TARGET_ARCH_RISCV64*/
     default: {
       switch (instr_.BaseOpcode()) {
         case AMO:
@@ -4824,7 +4848,65 @@ Builtin Simulator::LookUp(Address pc) {
 }
 
 void Simulator::DecodeRVIType() {
-  switch (instr_.InstructionBits() & kITypeMask) {
+  int32_t opcode = instr_.InstructionBits() &  (kITypeMask | kImm12Mask);
+
+  switch (opcode) {
+    case RO_ORCB: {
+      reg_t rs1_val = rs1();
+      reg_t result = 0;
+      reg_t mask = 0xFF;
+      reg_t step = 8;
+      for (reg_t i = 0; i < xlen; i += step) {
+        if ((rs1_val & mask) != 0) {
+          result |= mask;
+        }
+        mask <<= step;
+      }
+      set_rd(result);
+      return;
+    }
+    case RO_REV8: {
+      reg_t rs1_val = rs1();
+      reg_t result = 0;
+      reg_t mask = 255;
+      reg_t step = 8;
+      for (reg_t i = 0; i < xlen; i += step) {
+        reg_t chunk_i = (rs1_val >> i) & mask;
+        result |= chunk_i << (xlen - i - step);
+      }
+      set_rd(result);
+      return;
+    }
+    default: {
+      opcode = instr_.InstructionBits() &  (kITypeMask | kFunct7Mask);
+      break;
+    }
+  }
+
+  switch (opcode) {
+    case RO_RORI: {
+      int16_t shamt = shamt6();
+      if (shamt >= xlen) {
+        shamt = shamt5();
+      }
+      set_rd((rs1() >> shamt) | (rs1() << (xlen - shamt)));
+      return;
+    }
+#ifdef V8_TARGET_ARCH_RISCV64
+    case RO_RORIW: {
+      reg_t extz_rs1 = zext32(rs1());
+      int16_t shamt = shamt5();
+      set_rd(sext32((extz_rs1 >> shamt) | (extz_rs1 << (32 - shamt))));
+      return;
+    }
+#endif /*V8_TARGET_ARCH_RISCV64*/
+    default: {
+      opcode = instr_.InstructionBits() &  kITypeMask;
+      break;
+    }
+  }
+
+  switch (opcode) {
     case RO_JALR: {
       set_rd(get_pc() + kInstrSize);
       // Note: No need to shift 2 for JALR's imm12, but set lowest bit to 0.
@@ -4986,23 +5068,6 @@ void Simulator::DecodeRVIType() {
       } else {
         UNSUPPORTED();
       }
-      break;
-    }
-      // TODO(riscv): use Zbb Standard Extension macro block
-    case RO_ROR: {
-      int64_t shamt = rs2() & (xlen - 1);
-      set_rd((rs1() >> shamt) | (rs1() << (xlen - shamt)));
-
-      break;
-    }
-    case RO_RORI: {
-      int16_t shamt = shamt6();
-      if (shamt >= xlen) {
-        shamt = shamt5();
-      }
-      require(shamt < xlen);
-      set_rd((rs1() >> shamt) | (rs1() << (xlen - shamt)));
-
       break;
     }
       // TODO(riscv): use Zifencei Standard Extension macro block
