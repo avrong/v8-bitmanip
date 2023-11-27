@@ -150,5 +150,3 @@ void AssemblerRISCVB::bseti(Register rd, Register rs1, uint8_t shamt) {
 #endif
 }
 #endif  // CAN_USE_ZBS_INSTRUCTIONS
-}  // namespace internal
-}  // namespace v8

@@ -1,6 +1,7 @@
 // Copyright 2022 the V8 project authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
 #include "src/codegen/assembler.h"
 #include "src/codegen/riscv/base-assembler-riscv.h"
 #include "src/codegen/riscv/constant-riscv-b.h"
@@ -66,6 +67,10 @@ class AssemblerRISCVB : public AssemblerRiscvBase {
   void bset(Register rd, Register rs1, Register rs2);
   void bseti(Register rd, Register rs1, uint8_t shamt);
 #endif
+ // Zbb: basic
+
+ // Zbb: bitwise rotation
+
 };
 }  // namespace internal
 }  // namespace v8

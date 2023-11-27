@@ -1,6 +1,7 @@
 // Copyright 2023 the V8 project authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
 #ifndef V8_CODEGEN_RISCV_CONSTANT_RISCV_B_H_
 #define V8_CODEGEN_RISCV_CONSTANT_RISCV_B_H_
 
@@ -103,6 +104,10 @@ constexpr Opcode RO_BSET =
     OP | (0b001 << kFunct3Shift) | (0b0010100 << kFunct7Shift);
 constexpr Opcode RO_BSETI =
     OP_IMM | (0b001 << kFunct3Shift) | (0b0010100 << kFunct7Shift);
+
+// Zbb: basic
+
+// Zbb: bitwise rotation
 
 }  // namespace internal
 }  // namespace v8
