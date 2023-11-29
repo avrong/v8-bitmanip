@@ -3714,6 +3714,13 @@ void Simulator::DecodeRVRType() {
       break;
     }
       // TODO(riscv): End Add RISCV M extension macro
+    // Bit-Manipulation ISA-extensions
+    // Zba
+
+    // Zbb: basic
+
+    // Zbb: bitwise rotation
+
     default: {
       switch (instr_.BaseOpcode()) {
         case AMO:
@@ -5270,6 +5277,13 @@ void Simulator::DecodeRVIType() {
                        get_fpu_register(frd_reg()));
       break;
     }
+    // Bit-Manipulation ISA-extensions
+    // Zba
+
+    // Zbb: basic
+
+    // Zbb: bitwise rotation
+
     default: {
 #ifdef CAN_USE_RVV_INSTRUCTIONS
       if (!DecodeRvvVL()) {

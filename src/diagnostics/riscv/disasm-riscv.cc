@@ -1284,8 +1284,7 @@ void Decoder::DecodeRFPType(Instruction* instr) {
       Format(instr, "fdiv.d    'fd, 'fs1, 'fs2");
       break;
     case RO_FSQRT_D: {
-      if (instr->Rs2Value() == 0b00000) {
-        Format(instr, "fsqrt.d   'fd, 'fs1");
+      if (instr->Rs2Value() == 0b00000) { Format(instr, "fsqrt.d   'fd, 'fs1");
       } else {
         UNSUPPORTED_RISCV();
       }
@@ -1769,6 +1768,13 @@ void Decoder::DecodeIType(Instruction* instr) {
     case RO_FLD:
       Format(instr, "fld       'fd, 'imm12('rs1)");
       break;
+    // Bit-Manipulation ISA-extensions
+    // Zba
+
+    // Zbb: basic
+
+    // Zbb: bitwise rotation
+
     default:
 #ifdef CAN_USE_RVV_INSTRUCTIONS
       if (instr->vl_vs_width() != -1) {
