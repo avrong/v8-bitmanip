@@ -477,12 +477,51 @@ UTEST_R1_FORM_WITH_RES_F(fneg_s, float, 23.5f, -23.5f)
 // UTEST_R1_FORM_WITH_RES_F(fneg_d, double, 23.5, -23.5)
 
 // -- Bit-Manipulation ISA-extensions --
-// BR : UTEST_R2; BI : UTEST_I; BIH : UTEST_R1
-// -- Zba --
+TEST(RISCV_B) {
+  // BR : UTEST_R2; BI : UTEST_I; BIH : UTEST_R1
+  i::v8_flags.riscv_bitmanip = true;
+  CcTest::InitializeVM();
 
-// -- Zbb: basic --
+  // -- Zba --
 
-// -- Zbb: bitwise rotation --
+  // -- Zbb: basic --
+
+  // -- Zbb: bitwise rotation --
+  // Test rol
+  {
+    auto fn = [](MacroAssembler& assm) { __ rol(a0, a0, a1); };
+    auto res = GenAndRunTest<uint32_t, uint32_t>(16, 2, fn);
+    CHECK_EQ(64, res);
+  }
+
+  // Test ror
+  {
+    auto fn = [](MacroAssembler& assm) { __ ror(a0, a0, a1); };
+    auto res = GenAndRunTest<uint32_t, uint32_t>(16, 2, fn);
+    CHECK_EQ(4, res);
+  }
+
+  // Test rori
+  {
+    auto fn = [](MacroAssembler& assm) { __ rori(a0, a0, 2); };
+    auto res = GenAndRunTest<uint32_t, uint32_t>(16, fn);
+    CHECK_EQ(4, res);
+  }
+
+  // Test orc.b
+  {
+    auto fn = [](MacroAssembler& assm) { __ orcb(a0, a0); };
+    auto res = GenAndRunTest<int32_t, int32_t>(0x10010011, fn);
+    CHECK_EQ(0xFFFF00FF, res);
+  }
+
+  // Test rev8
+  {
+    auto fn = [](MacroAssembler& assm) { __ rev8(a0, a0); };
+    auto res = GenAndRunTest<int32_t, int32_t>(0x12344321, fn);
+    CHECK_EQ(0x21433412, res);
+  }
+}
 
 // Test fmv_d
 TEST(RISCV_UTEST_fmv_d_double) {
