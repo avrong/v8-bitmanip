@@ -1969,6 +1969,29 @@ bool Decoder::DecodeBRType(Instruction* instr) {
     // Zba
 
     // Zbb: basic
+    // Logical with negate
+    case RO_ANDN:
+      Format(instr, "andn       'rd, 'rs1, 'rs2");
+      return true;
+    case RO_ORN:
+      Format(instr, "orn       'rd, 'rs1, 'rs2");
+      return true;
+    case RO_XNOR:
+      Format(instr, "xnor       'rd, 'rs1, 'rs2");
+      return true;
+    // Integer minimum/maximum
+    case RO_MAX:
+      Format(instr, "max       'rd, 'rs1, 'rs2");
+      return true;
+    case RO_MAXU:
+      Format(instr, "maxu       'rd, 'rs1, 'rs2");
+      return true;
+    case RO_MIN:
+      Format(instr, "min       'rd, 'rs1, 'rs2");
+      return true;
+    case RO_MINU:
+      Format(instr, "minu       'rd, 'rs1, 'rs2");
+      return true;
 
     // Zbb: bitwise rotation
 
@@ -1995,6 +2018,40 @@ bool Decoder::DecodeBIHType(Instruction* instr) {
     // Zba
 
     // Zbb: basic
+    // Count leading/trailing zero bits
+    case RO_CLZ:
+      Format(instr, "clz       'rd, 'rs");
+      return true;
+    case RO_CTZ:
+      Format(instr, "ctz       'rd, 'rs");
+      return true;
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CLZW:
+      Format(instr, "clzw       'rd, 'rs");
+      return true;
+    case RO_CTZW:
+      Format(instr, "ctzw       'rd, 'rs");
+      return true;
+#endif /*V8_TARGET_ARCH_64_BIT*/
+    // Count population
+    case RO_CPOP:
+      Format(instr, "cpop       'rd, 'rs");
+      return true;
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CPOPW:
+      Format(instr, "cpopw       'rd, 'rs");
+      return true;
+#endif /*V8_TARGET_ARCH_64_BIT*/
+    // Sign- and zero-extension
+    case RO_SEXT_B:
+      Format(instr, "sext.b       'rd, 'rs");
+      return true;
+    case RO_SEXT_H:
+      Format(instr, "sext.h       'rd, 'rs");
+      return true;
+    case RO_ZEXT_H:
+      Format(instr, "zext.h       'rd, 'rs");
+      return true;
 
     // Zbb: bitwise rotation
 
