@@ -14,6 +14,86 @@ void AssemblerRISCVI::auipc(Register rd, int32_t imm20) {
   GenInstrU(AUIPC, rd, imm20);
 }
 
+// Zbb: basic
+// Logical with negate
+void AssemblerRISCVI::andn(Register rd, Register rs1, Register rs2) {
+  GenInstrR(0b0100000, 0b111, OP, rd, rs1, rs2);
+}
+
+void AssemblerRISCVI::orn(Register rd, Register rs1, Register rs2) {
+  GenInstrR(0b0100000, 0b110, OP, rd, rs1, rs2);
+}
+
+void AssemblerRISCVI::xnor(Register rd, Register rs1, Register rs2) {
+  GenInstrR(0b0100000, 0b100, OP, rd, rs1, rs2);
+}
+
+// Sign- and zero-extension
+void AssemblerRISCVI::sext_b(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000100);
+}
+
+void AssemblerRISCVI::sext_h(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000101);
+}
+
+#if V8_TARGET_ARCH_RISCV32
+void AssemblerRISCVI::zext_h(Register rd, Register rs) {
+  GenInstrI(0b100, OP, rd, rs, 0b000010000000);
+}
+#elif V8_TARGET_ARCH_RISCV64
+void AssemblerRISCVI::zext_h(Register rd, Register rs) {
+  GenInstrI(0b100, OP_32, rd, rs, 0b000010000000);
+}
+#endif
+
+// Count leading/training zero bits
+void AssemblerRISCVI::clz(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000000);
+}
+
+void AssemblerRISCVI::ctz(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000001);
+}
+
+#if V8_TARGET_ARCH_RISCV64
+void AssemblerRISCVI::clzw(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM_32, rd, rs, 0b011000000000);
+}
+
+void AssemblerRISCVI::ctzw(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM_32, rd, rs, 0b011000000001);
+}
+#endif
+
+// Integer minimum/maximum
+void AssemblerRISCVI::max(Register rd, Register rs1, Register rs2) {
+  GenInstrR(0b0000101, 0b110, OP, rd, rs1, rs2);
+}
+
+void AssemblerRISCVI::maxu(Register rd, Register rs1, Register rs2) {
+  GenInstrR(0b0000101, 0b111, OP, rd, rs1, rs2);
+}
+
+void AssemblerRISCVI::min(Register rd, Register rs1, Register rs2) {
+  GenInstrR(0b0000101, 0b100, OP, rd, rs1, rs2);
+}
+
+void AssemblerRISCVI::minu(Register rd, Register rs1, Register rs2) {
+  GenInstrR(0b0000101, 0b101, OP, rd, rs1, rs2);
+}
+
+// Count population
+void AssemblerRISCVI::cpop(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000010);
+}
+
+#if V8_TARGET_ARCH_RISCV64
+void AssemblerRISCVI::cpopw(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM_32, rd, rs, 0b011000000010);
+}
+#endif
+
 // Jumps
 
 void AssemblerRISCVI::jal(Register rd, int32_t imm21) {

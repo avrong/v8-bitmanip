@@ -16,6 +16,33 @@ class AssemblerRISCVI : public AssemblerRiscvBase {
   void lui(Register rd, int32_t imm20);
   void auipc(Register rd, int32_t imm20);
 
+  // Zbb: basic
+  // Logical with negate
+  void andn(Register rd, Register rs1, Register rs2);
+  void orn(Register rd, Register rs1, Register rs2);
+  void xnor(Register rd, Register rs1, Register rs2);
+  // Sign- and zero-extension
+  void sext_b(Register rd, Register rs);
+  void sext_h(Register rd, Register rs);
+  void zext_h(Register rd, Register rs);
+  // Count leading/training zero bits
+  void clz(Register rd, Register rs);
+  void ctz(Register rd, Register rs);
+  #if V8_TARGET_ARCH_RISCV64
+  void clzw(Register rd, Register rs);
+  void ctzw(Register rd, Register rs);
+  #endif
+  // Integer minimum/maximum
+  void max(Register rd, Register rs1, Register rs2);
+  void maxu(Register rd, Register rs1, Register rs2);
+  void min(Register rd, Register rs1, Register rs2);
+  void minu(Register rd, Register rs1, Register rs2);
+  // Count population
+  void cpop(Register rd, Register rs);
+  #if V8_TARGET_ARCH_RISCV64
+  void cpopw(Register rd, Register rs);
+  #endif
+
   // Jumps
   void jal(Register rd, int32_t imm20);
   void jalr(Register rd, Register rs1, int16_t imm12);

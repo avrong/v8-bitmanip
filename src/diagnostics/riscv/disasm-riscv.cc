@@ -970,6 +970,66 @@ void Decoder::DecodeRType(Instruction* instr) {
       break;
 #endif /*V8_TARGET_ARCH_64_BIT*/
     // TODO(riscv): End Add RISCV M extension macro
+
+    // Zbb: basic
+    // Logical with negate
+    case RO_ANDN:
+      Format(instr, "andn       'rd, 'rs1, 'rs2");
+      break;
+    case RO_ORN:
+      Format(instr, "orn       'rd, 'rs1, 'rs2");
+      break;
+    case RO_XNOR:
+      Format(instr, "xnor       'rd, 'rs1, 'rs2");
+      break;
+    // Sign- and zero-extension
+    case RO_SEXT_B:
+      Format(instr, "sext.b       'rd, 'rs");
+      break;
+    case RO_SEXT_H:
+      Format(instr, "sext.h       'rd, 'rs");
+      break;
+    case RO_ZEXT_H:
+      Format(instr, "zext.h       'rd, 'rs");
+      break;
+    // Count leading/training zero bits
+    case RO_CLZ:
+      Format(instr, "clz       'rd, 'rs");
+      break;
+    case RO_CTZ:
+      Format(instr, "ctz       'rd, 'rs");
+      break;
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CLZW:
+      Format(instr, "clzw       'rd, 'rs");
+      break;
+    case RO_CTZW:
+      Format(instr, "ctzw       'rd, 'rs");
+      break;
+#endif /*V8_TARGET_ARCH_64_BIT*/
+    // Integer minimum/maximum
+    case RO_MAX:
+      Format(instr, "max       'rd, 'rs1, 'rs2");
+      break;
+    case RO_MAXU:
+      Format(instr, "maxu       'rd, 'rs1, 'rs2");
+      break;
+    case RO_MIN:
+      Format(instr, "min       'rd, 'rs1, 'rs2");
+      break;
+    case RO_MINU:
+      Format(instr, "minu       'rd, 'rs1, 'rs2");
+      break;
+    // Count population
+    case RO_CPOP:
+      Format(instr, "cpop       'rd, 'rs");
+      break;
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CPOPW:
+      Format(instr, "cpopw       'rd, 'rs");
+      break;
+#endif /*V8_TARGET_ARCH_64_BIT*/
+
     default: {
       switch (instr->BaseOpcode()) {
         case AMO:

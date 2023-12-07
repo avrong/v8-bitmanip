@@ -3643,6 +3643,134 @@ void Simulator::DecodeRVRType() {
       break;
     }
 #endif /*V8_TARGET_ARCH_RISCV64*/
+
+    // Zbb: basic
+    // Logical with negate
+    case RO_ANDN: {
+      set_rd(rs1() & ~rs2());
+      break;
+    }
+    case RO_ORN: {
+      set_rd(rs1() | ~rs2());
+      break;
+    }
+    case RO_XNOR: {
+      set_rd(~(rs1() ^ rs2()));
+      break;
+    }
+    // Sign- and zero-extension
+    case RO_SEXT_B: {
+      set_rd(sext_xlen(int8_t(rs1())));
+      break;
+    }
+    case RO_SEXT_H: {
+      set_rd(sext_xlen(int16_t(rs1())));
+      break;
+    }
+    case RO_ZEXT_H: {
+      set_rd(sext_xlen(uint16_t(rs1())));
+      break;
+    }
+    // Count leading/training zero bits
+    case RO_CLZ: {
+      #ifdef V8_HAS_BUILTIN_CLZ
+      set_rd(__builtin_clz(rs1()));
+      #else
+      sreg_t x = rs1();
+      int i;
+      for (i = xlen - 1; i > 0; i--) {
+        if (x & (1 << i)) break;
+      }
+      set_rd((xlen - 1) - i);
+      #endif
+      break;
+    }
+    case RO_CTZ: {
+      #ifdef V8_HAS_BUILTIN_CTZ
+      set_rd(__builtin_ctz(rs1()));
+      #else
+      sreg_t x = rs1();
+      int i;
+      for (i = 0; i < xlen; i++) {
+        if (x & (1 << i)) break;
+      }
+      set_rd(i);
+      #endif
+      break;
+    }
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CLZW: {
+      #ifdef V8_HAS_BUILTIN_CLZ
+      set_rd(__builtin_clz(rs1()));
+      #else
+      sreg_t x = rs1();
+      int i;
+      for (i = 31; i > 0; i--) {
+        if (x & (1 << i)) break;
+      }
+      set_rd(31 - i);
+      #endif
+      break;
+    }
+    case RO_CTZW: {
+      #ifdef V8_HAS_BUILTIN_CTZ
+      set_rd(__builtin_ctz(rs1()));
+      #else
+      sreg_t x = rs1();
+      int i;
+      for (i = 0; i < 32; i++) {
+        if (x & (1 << i)) break;
+      }
+      set_rd(i);
+      #endif
+      break;
+    }
+#endif /*V8_TARGET_ARCH_64_BIT*/
+    // Integer minimum/maximum
+    case RO_MAX: {
+      set_rd(rs1() > rs2() ? rs1() : rs2());
+      break;
+    }
+    case RO_MAXU: {
+      set_rd((reg_t) rs1() > rs2() ? rs1() : rs2());
+      break;
+    }
+    case RO_MIN: {
+      set_rd(rs1() < rs2() ? rs1() : rs2());
+      break;
+    }
+    case RO_MINU: {
+      set_rd((reg_t) rs1() < rs2() ? rs1() : rs2());
+      break;
+    }
+    // Count population
+    case RO_CPOP: {
+      #ifdef V8_HAS_BUILTIN_POPCOUNT
+      set_rd(__builtin_popcount(rs1()));
+      #else
+      int bitcount = 0;
+      for (int i = 0; i < xlen; i++) {
+        if (x & (1 << i)) bitcount++;
+      }
+      set_rd(bitcount);
+      #endif
+      break;
+    }
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CPOPW: {
+      #ifdef V8_HAS_BUILTIN_POPCOUNT
+      set_rd(__builtin_popcount(rs1()))
+      #else
+      int bitcount = 0;
+      for (int i = 0; i < 32; i++) {
+        if (x & (1 << i)) bitcount++;
+      }
+      set_rd(bitcount);
+      #endif
+      break;
+    }
+#endif /*V8_TARGET_ARCH_64_BIT*/
+
       // TODO(riscv): End Add RISCV M extension macro
     default: {
       switch (instr_.BaseOpcode()) {
