@@ -1779,13 +1779,6 @@ void Decoder::DecodeIType(Instruction* instr) {
     case RO_FLD:
       Format(instr, "fld       'fd, 'imm12('rs1)");
       break;
-    // Bit-Manipulation ISA-extensions
-    // Zba
-
-    // Zbb: basic
-
-    // Zbb: bitwise rotation
-
     default:
 #ifdef CAN_USE_RVV_INSTRUCTIONS
       if (instr->vl_vs_width() != -1) {
