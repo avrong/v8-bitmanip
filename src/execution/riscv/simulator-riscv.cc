@@ -5489,7 +5489,7 @@ bool Simulator::DecodeBRType() {
       return true;
     }
     case RO_MAXU: {
-      set_rd((reg_t) rs1() > rs2() ? rs1() : rs2());
+      set_rd( reg_t(rs1()) > reg_t(rs2()) ? rs1() : rs2());
       return true;
     }
     case RO_MIN: {
@@ -5497,7 +5497,7 @@ bool Simulator::DecodeBRType() {
       return true;
     }
     case RO_MINU: {
-      set_rd((reg_t) rs1() < rs2() ? rs1() : rs2());
+      set_rd( reg_t(rs1()) < reg_t(rs2()) ? rs1() : rs2());
       return true;
     }
 
@@ -5528,83 +5528,61 @@ bool Simulator::DecodeBIHType() {
     // Zbb: basic
     // Count leading/trailing zero bits
     case RO_CLZ: {
-    #ifdef V8_HAS_BUILTIN_CLZ
-      set_rd(__builtin_clz(rs1()));
-    #else
       sreg_t x = rs1();
       int i;
       for (i = xlen - 1; i > 0; i--) {
         if (x & (1 << i)) break;
       }
       set_rd((xlen - 1) - i);
-    #endif
       return true;
     }
     case RO_CTZ: {
-    #ifdef V8_HAS_BUILTIN_CTZ
-      set_rd(__builtin_ctz(rs1()));
-    #else
       sreg_t x = rs1();
       int i;
       for (i = 0; i < xlen; i++) {
         if (x & (1 << i)) break;
       }
       set_rd(i);
-    #endif
       return true;
     }
 #ifdef V8_TARGET_ARCH_64_BIT
     case RO_CLZW: {
-    #ifdef V8_HAS_BUILTIN_CLZ
-      set_rd(__builtin_clz(rs1()));
-    #else
       sreg_t x = rs1();
       int i;
       for (i = 31; i > 0; i--) {
         if (x & (1 << i)) break;
       }
       set_rd(31 - i);
-    #endif
       return true;
     }
     case RO_CTZW: {
-    #ifdef V8_HAS_BUILTIN_CTZ
-      set_rd(__builtin_ctz(rs1()));
-    #else
       sreg_t x = rs1();
       int i;
       for (i = 0; i < 32; i++) {
         if (x & (1 << i)) break;
       }
       set_rd(i);
-    #endif
       return true;
     }
 #endif /*V8_TARGET_ARCH_64_BIT*/
     // Count population
     case RO_CPOP: {
-    #ifdef V8_HAS_BUILTIN_POPCOUNT
-      set_rd(__builtin_popcount(rs1()));
-    #else
+      sreg_t x = rs1();
       int bitcount = 0;
       for (int i = 0; i < xlen; i++) {
         if (x & (1 << i)) bitcount++;
       }
       set_rd(bitcount);
-    #endif
       return true;
     }
 #ifdef V8_TARGET_ARCH_64_BIT
     case RO_CPOPW: {
-    #ifdef V8_HAS_BUILTIN_POPCOUNT
-      set_rd(__builtin_popcount(rs1()))
-    #else
+      sreg_t x = rs1();
       int bitcount = 0;
       for (int i = 0; i < 32; i++) {
         if (x & (1 << i)) bitcount++;
       }
       set_rd(bitcount);
-    #endif
       return true;
     }
 #endif /*V8_TARGET_ARCH_64_BIT*/
