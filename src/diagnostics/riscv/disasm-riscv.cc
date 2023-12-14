@@ -1971,6 +1971,24 @@ bool Decoder::DecodeBRType(Instruction* instr) {
     // Zbb: basic
 
     // Zbb: bitwise rotation
+    case RO_ROL: {
+      Format(instr, "rol      'rd, 'rs1, 'rs2");
+      return true;
+    }
+    case RO_ROR: {
+      Format(instr, "ror      'rd, 'rs1, 'rs2");
+      return true;
+    }
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_ROLW: {
+      Format(instr, "rolw     'rd, 'rs1, 'rs2");
+      return true;
+    }
+    case RO_RORW: {
+      Format(instr, "rorw     'rd, 'rs1, 'rs2");
+      return true;
+    }
+#endif /*V8_TARGET_ARCH_64_BIT*/
 
     default:
       return false;
@@ -1978,13 +1996,27 @@ bool Decoder::DecodeBRType(Instruction* instr) {
 }
 
 bool Decoder::DecodeBIType(Instruction* instr) {
-  switch (instr->InstructionBits() & kITypeMask) {
+  switch (instr->InstructionBits() & (kITypeMask | kFunct6Mask)) {
     // Zba
 
     // Zbb: basic
 
     // Zbb: bitwise rotation
-
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_RORI: {
+      Format(instr, "rori     'rd, 'rs1, 's64");
+      return true;
+    }
+    case RO_RORIW: {
+      Format(instr, "roriw    'rd, 'rs1, 's32");
+      return true;
+    }
+#elif defined(V8_TARGET_ARCH_32_BIT)
+    case RO_RORI: {
+      Format(instr, "rori     'rd, 'rs1, 's32");
+      return true;
+    }
+#endif
     default:
       return false;
   }
@@ -1997,6 +2029,14 @@ bool Decoder::DecodeBIHType(Instruction* instr) {
     // Zbb: basic
 
     // Zbb: bitwise rotation
+    case RO_ORCB: {
+      Format(instr, "orc.b    'rd, 'rs1");
+      return true;
+    }
+    case RO_REV8: {
+      Format(instr, "rev8     'rd, 'rs1");
+      return true;
+    }
 
     default:
       return false;

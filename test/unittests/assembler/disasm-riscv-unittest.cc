@@ -672,5 +672,48 @@ TEST_F(DisasmRiscv64Test, RVV) {
   VERIFY_RUN();
 }
 
+#ifdef V8_TARGET_ARCH_RISCV64
+TEST_F(DisasmRiscv64Test, RV64B) {
+  // -- Bit-Manipulation ISA-extensions --
+  i::v8_flags.riscv_bitmanip = true;
+  SET_UP();
+
+  // -- Zba --
+
+  // -- Zbb: basic --
+
+  // -- Zbb: bitwise rotation --
+  COMPARE(rol(a0, s3, s4),   "61499533       rol      a0, s3, s4"); // 0110000 10100 10011 001 01010 0110011
+  COMPARE(rolw(a0, s3, s4),  "6149953b       rolw     a0, s3, s4"); // 0110000 10100 10011 001 01010 0111011
+  COMPARE(ror(a0, s3, s4),   "6149d533       ror      a0, s3, s4"); // 0110000 10100 10011 101 01010 0110011
+  COMPARE(rorw(a0, s3, s4),  "6149d53b       rorw     a0, s3, s4"); // 0110000 10100 10011 101 01010 0111011
+  COMPARE(rori(a0, s3, 63),  "63f9d513       rori     a0, s3, 63"); // 011000 111111 10011 101 01010 0010011
+  COMPARE(roriw(a0, s3, 31), "61f9d51b       roriw    a0, s3, 31"); // 0110000 11111 10011 101 01010 0011011
+  COMPARE(orcb(a0, s3),      "2879d513       orc.b    a0, s3");     // 001010000111 10011 101 01010 0010011
+  COMPARE(rev8(a0, s3),      "6b89d513       rev8     a0, s3");     // 011010111000 10011 101 01010 0010011
+
+  VERIFY_RUN();
+}
+#else
+TEST_F(DisasmRiscv64Test, RV32B) {
+  // -- Bit-Manipulation ISA-extensions --
+  i::v8_flags.riscv_bitmanip = true;
+  SET_UP();
+
+  // -- Zba --
+
+  // -- Zbb: basic --
+
+  // -- Zbb: bitwise rotation --
+  COMPARE(rol(a0, s3, s4),  "61499533       rol      a0, s3, s4"); // 0110000 10100 10011 001 01010 0110011
+  COMPARE(ror(a0, s3, s4),  "6149d533       ror      a0, s3, s4"); // 0110000 10100 10011 101 01010 0110011
+  COMPARE(rori(a0, s3, 31), "61f9d513       rori     a0, s3, 31"); // 0110000 11111 10011 101 01010 0010011
+  COMPARE(orcb(a0, s3),     "2879d513       orc.b    a0, s3");     // 001010000111 10011 101 01010 0010011
+  COMPARE(rev8(a0, s3),     "6989d513       rev8     a0, s3");     // 011010011000 10011 101 01010 0010011
+
+  VERIFY_RUN();
+}
+#endif
+
 }  // namespace internal
 }  // namespace v8
