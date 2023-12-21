@@ -39,9 +39,9 @@ constexpr Opcode RO_MINU =
 // Sign- and zero-extension
 constexpr Opcode RO_SEXT_B = OP_IMM | (0b001 << kFunct3Shift) | (0b011000000100 << kImm12Shift);
 constexpr Opcode RO_SEXT_H = OP_IMM | (0b001 << kFunct3Shift) | (0b011000000101 << kImm12Shift);
-#if V8_TARGET_ARCH_RISCV32
+#ifdef V8_TARGET_ARCH_RISCV32
 constexpr Opcode RO_ZEXT_H = OP | (0b100 << kFunct3Shift) | (0b000010000000 << kImm12Shift);
-#elif V8_TARGET_ARCH_RISCV64
+#elif defined(V8_TARGET_ARCH_RISCV64)
 constexpr Opcode RO_ZEXT_H = OP_32 | (0b100 << kFunct3Shift) | (0b000010000000 << kImm12Shift);
 #endif
 

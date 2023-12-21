@@ -75,11 +75,11 @@ void AssemblerRISCVB::sext_h(Register rd, Register rs) {
   GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000101);
 }
 
-#if V8_TARGET_ARCH_RISCV32
+#ifdef V8_TARGET_ARCH_RISCV32
 void AssemblerRISCVB::zext_h(Register rd, Register rs) {
   GenInstrI(0b100, OP, rd, rs, 0b000010000000);
 }
-#elif V8_TARGET_ARCH_RISCV64
+#elif defined(V8_TARGET_ARCH_RISCV64)
 void AssemblerRISCVB::zext_h(Register rd, Register rs) {
   GenInstrI(0b100, OP_32, rd, rs, 0b000010000000);
 }

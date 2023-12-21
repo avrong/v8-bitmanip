@@ -140,6 +140,48 @@ TEST_F(DisasmRiscv64Test, Arith) {
   VERIFY_RUN();
 }
 
+TEST_F(DisasmRiscv64Test, RVB) {
+  // -- Bit-Manipulation ISA-extensions --
+  i::v8_flags.riscv_bitmanip = true;
+  SET_UP();
+
+  // -- Zba --
+
+  // -- Zbb: basic --
+  // Logical with negate
+  COMPARE(andn(a0, s3, s4), "4149f533       andn      a0, s3, s4");
+  COMPARE(orn(a0, s3, s4),  "4149e533       orn       a0, s3, s4");
+  COMPARE(xnor(a0, s3, s4), "4149c533       xnor      a0, s3, s4");
+  // Count leading/trailing zero bits
+  COMPARE(clz(a0, s3), "60099513       clz       a0, s3");
+  COMPARE(ctz(a0, s3), "60199513       ctz       a0, s3");
+#ifdef V8_TARGET_ARCH_RISCV64
+  COMPARE(clzw(a1, s3), "6009959b       clzw      a1, s3");
+  COMPARE(ctzw(a0, s2), "6019151b       ctzw      a0, s2");
+#endif
+  // Count population
+  COMPARE(cpop(a0, s2),  "60291513       cpop      a0, s2");
+#ifdef V8_TARGET_ARCH_RISCV64
+  COMPARE(cpopw(a0, s2), "6029151b       cpopw     a0, s2");
+#endif
+  // Integer minimum/maximum
+  COMPARE(max(a1, s3, t0),  "0a59e5b3       max       a1, s3, t0");
+  COMPARE(maxu(a0, s2, a1), "0ab97533       maxu      a0, s2, a1");
+  COMPARE(min(a1, s3, fp),  "0a89c5b3       min       a1, s3, fp");
+  COMPARE(minu(a0, s2, sp), "0a295533       minu      a0, s2, sp");
+  // Sign- and zero-extension
+  COMPARE(sext_b(a0, s2), "60491513       sext.b    a0, s2");
+  COMPARE(sext_h(a1, s3), "60599593       sext.h    a1, s3");
+#ifdef V8_TARGET_ARCH_RISCV64
+  COMPARE(zext_h(a0, s2), "0809453b       zext.h    a0, s2");
+#else
+  COMPARE(zext_h(a0, s2), "08094533       zext.h    a0, s2");
+#endif
+  // -- Zbb: bitwise rotation --
+
+  VERIFY_RUN();
+}
+
 TEST_F(DisasmRiscv64Test, LD_ST) {
   SET_UP();
   // Loads
