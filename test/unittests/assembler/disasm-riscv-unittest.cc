@@ -141,6 +141,7 @@ TEST_F(DisasmRiscvTest, Arith) {
 
 TEST_F(DisasmRiscvTest, RVB) {
   SET_UP();
+  i::v8_flags.riscv_bitmanip = true;
 
 #ifdef CAN_USE_ZBS_INSTRUCTIONS
   COMPARE(sh1add(s6, t1, t5), "21e32b33       sh1add    s6, t1, t5");

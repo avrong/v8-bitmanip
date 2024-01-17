@@ -3672,15 +3672,6 @@ void Simulator::DecodeRVRType() {
       break;
     }
 #endif /*V8_TARGET_ARCH_RISCV64*/
-    case RO_SH1ADD:
-      set_rd(rs2() + (rs1() << 1));
-      break;
-    case RO_SH2ADD:
-      set_rd(rs2() + (rs1() << 2));
-      break;
-    case RO_SH3ADD:
-      set_rd(rs2() + (rs1() << 3));
-      break;
     case RO_MAX:
       set_rd(rs1() < rs2() ? rs2() : rs1());
       break;
@@ -5135,9 +5126,6 @@ void Simulator::DecodeRVIType() {
         case RO_SLLIW:
           set_rd(sext32(rs1() << shamt5()));
           break;
-        case RO_SLLIUW:
-          set_rd(zext32(rs1()) << shamt6());
-          break;
         case OP_COUNTW: {
           switch (instr_.Shamt()) {
             case 0: {  // clzw
@@ -5684,6 +5672,36 @@ void Simulator::DecodeCBType() {
 bool Simulator::DecodeBRType() {
   switch (instr_.InstructionBits() & kRTypeMask) {
     // Zba
+    case RO_SH1ADD:{
+      set_rd(rs2() + (rs1() << 1));
+      return true;
+    }
+    case RO_SH2ADD: {
+      set_rd(rs2() + (rs1() << 2));
+      return true;
+    }
+    case RO_SH3ADD: {
+      set_rd(rs2() + (rs1() << 3));
+      return true;
+    }
+    #ifdef V8_TARGET_ARCH_RISCV64
+    case RO_ADDUW: {
+      set_rd(zext32(rs1()) + rs2());
+      return true;
+    }
+    case RO_SH1ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 1));
+      return true;
+    }
+    case RO_SH2ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 2));
+      return true;
+    }
+    case RO_SH3ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 3));
+      return true;
+    }
+    #endif
 
     // Zbb: basic
 
@@ -5697,6 +5715,12 @@ bool Simulator::DecodeBRType() {
 bool Simulator::DecodeBIType() {
   switch (instr_.InstructionBits() & kITypeMask) {
     // Zba
+    #ifdef V8_TARGET_ARCH_RISCV64
+    case RO_SLLIUW: {
+      set_rd(zext32(rs1()) << shamt6());
+      return true;
+    }
+    #endif
 
     // Zbb: basic
 
@@ -5709,8 +5733,6 @@ bool Simulator::DecodeBIType() {
 
 bool Simulator::DecodeBIHType() {
   switch (instr_.InstructionBits() & (kITypeMask | kImm12Mask)) {
-    // Zba
-
     // Zbb: basic
 
     // Zbb: bitwise rotation

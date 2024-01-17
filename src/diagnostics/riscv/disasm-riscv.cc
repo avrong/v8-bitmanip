@@ -1001,15 +1001,6 @@ void Decoder::DecodeRType(Instruction* instr) {
       Format(instr, "sh3add.uw 'rd, 'rs1, 'rs2");
       break;
 #endif /*V8_TARGET_ARCH_64_BIT*/
-    case RO_SH1ADD:
-      Format(instr, "sh1add    'rd, 'rs1, 'rs2");
-      break;
-    case RO_SH2ADD:
-      Format(instr, "sh2add    'rd, 'rs1, 'rs2");
-      break;
-    case RO_SH3ADD:
-      Format(instr, "sh3add    'rd, 'rs1, 'rs2");
-      break;
     case RO_MAX:
       Format(instr, "max       'rd, 'rs1, 'rs2");
       break;
@@ -1624,9 +1615,6 @@ void Decoder::DecodeIType(Instruction* instr) {
         case RO_SLLIW:
           Format(instr, "slliw     'rd, 'rs1, 's32");
           break;
-        case RO_SLLIUW:
-          Format(instr, "slli.uw   'rd, 'rs1, 's32");
-          break;
         case OP_COUNTW: {
           switch (instr->Shamt()) {
             case 0:
@@ -2109,6 +2097,33 @@ void Decoder::DecodeCBType(Instruction* instr) {
 bool Decoder::DecodeBRType(Instruction* instr) {
   switch (instr->InstructionBits() & kRTypeMask) {
     // Zba
+    case RO_SH1ADD:
+      Format(instr, "sh1add    'rd, 'rs1, 'rs2");
+      return true;
+    case RO_SH2ADD:
+      Format(instr, "sh2add    'rd, 'rs1, 'rs2");
+      return true;
+    case RO_SH3ADD:
+      Format(instr, "sh3add    'rd, 'rs1, 'rs2");
+      return true;
+    #ifdef V8_TARGET_ARCH_64_BIT
+    case RO_ADDUW:
+      if (instr->Rs2Value() == zero_reg.code()) {
+        Format(instr, "zext.w    'rd, 'rs1");
+      } else {
+        Format(instr, "add.uw    'rd, 'rs1, 'rs2");
+      }
+      return true;
+    case RO_SH1ADDUW:
+      Format(instr, "sh1add.uw 'rd, 'rs1, 'rs2");
+      return true;
+    case RO_SH2ADDUW:
+      Format(instr, "sh2add.uw 'rd, 'rs1, 'rs2");
+      return true;
+    case RO_SH3ADDUW:
+      Format(instr, "sh3add.uw 'rd, 'rs1, 'rs2");
+      return true;
+    #endif 
 
     // Zbb: basic
 
@@ -2122,6 +2137,11 @@ bool Decoder::DecodeBRType(Instruction* instr) {
 bool Decoder::DecodeBIType(Instruction* instr) {
   switch (instr->InstructionBits() & kITypeMask) {
     // Zba
+    #ifdef V8_TARGET_ARCH_64_BIT
+    case RO_SLLIUW:
+      Format(instr, "slli.uw   'rd, 'rs1, 's32");
+      return true;
+    #endif
 
     // Zbb: basic
 
@@ -2134,8 +2154,6 @@ bool Decoder::DecodeBIType(Instruction* instr) {
 
 bool Decoder::DecodeBIHType(Instruction* instr) {
   switch (instr->InstructionBits() & (kITypeMask | kImm12Mask)) {
-    // Zba
-
     // Zbb: basic
 
     // Zbb: bitwise rotation
