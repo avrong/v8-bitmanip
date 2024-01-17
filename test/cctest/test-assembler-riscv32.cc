@@ -74,6 +74,26 @@ using F5 = void*(void* p0, void* p1, int p2, int p3, int p4);
     CHECK_EQ(expected_res, res);                                       \
   }
 
+#define UTEST_R2_FORM_WITH_RES_B(instr_name, type, rs1_val, rs2_val,   \
+                               expected_res)                           \
+  TEST(RISCV_UTEST_##instr_name) {                                     \
+    i::v8_flags.riscv_bitmanip = true;                                 \
+    CcTest::InitializeVM();                                            \
+    auto fn = [](MacroAssembler& assm) { __ instr_name(a0, a0, a1); }; \
+    auto res = GenAndRunTest<type, type>(rs1_val, rs2_val, fn);        \
+    CHECK_EQ(expected_res, res);                                       \
+  }
+
+#define UTEST_R1_FORM_WITH_RES_B(instr_name, in_type, out_type, rs1_val, \
+                                 expected_res)                           \
+  TEST(RISCV_UTEST_##instr_name) {                                       \
+    i::v8_flags.riscv_bitmanip = true;                                   \
+    CcTest::InitializeVM();                                              \
+    auto fn = [](MacroAssembler& assm) { __ instr_name(a0, a0); };       \
+    auto res = GenAndRunTest<out_type, in_type>(rs1_val, fn);            \
+    CHECK_EQ(expected_res, res);                                         \
+  }
+
 #define UTEST_R1_FORM_WITH_RES_C(instr_name, in_type, out_type, rs1_val, \
                                  expected_res)                           \
   TEST(RISCV_UTEST_##instr_name) {                                       \
@@ -481,6 +501,33 @@ UTEST_R1_FORM_WITH_RES_F(fneg_s, float, 23.5f, -23.5f)
 // -- Zba --
 
 // -- Zbb: basic --
+// Logical with negate
+UTEST_R2_FORM_WITH_RES_B(andn, int32_t, LARGE_UINT_UNDER_32_BIT,
+                      LARGE_INT_UNDER_32_BIT,
+                      int32_t((LARGE_UINT_UNDER_32_BIT) &
+                              (~LARGE_INT_UNDER_32_BIT)))
+UTEST_R2_FORM_WITH_RES_B(orn, int32_t, LARGE_UINT_UNDER_32_BIT,
+                      LARGE_INT_UNDER_32_BIT,
+                      int32_t((LARGE_UINT_UNDER_32_BIT) |
+                              (~LARGE_INT_UNDER_32_BIT)))
+UTEST_R2_FORM_WITH_RES_B(xnor, int32_t, LARGE_UINT_UNDER_32_BIT,
+                      LARGE_INT_UNDER_32_BIT,
+                      int32_t((~LARGE_UINT_UNDER_32_BIT) ^
+                              (~LARGE_INT_UNDER_32_BIT)))
+// Count leading/trailing zero bits
+UTEST_R1_FORM_WITH_RES_B(clz, int32_t, int32_t, 0b000011000100000000000, 15)
+UTEST_R1_FORM_WITH_RES_B(ctz, int32_t, int32_t, 0b000011000100000000000, 11)
+// Count population
+UTEST_R1_FORM_WITH_RES_B(cpop, int32_t, int32_t, 0b000011000100000000000, 3)
+// Integer minimum/maximum
+UTEST_R2_FORM_WITH_RES_B(max, int32_t, -1012, 3456, 3456)
+UTEST_R2_FORM_WITH_RES_B(min, int32_t, -1012, 3456, -1012)
+UTEST_R2_FORM_WITH_RES_B(maxu, uint32_t, -1012, 3456, uint32_t(-1012))
+UTEST_R2_FORM_WITH_RES_B(minu, uint32_t, -1012, 3456, 3456)
+// Sign- and zero-extension
+UTEST_R1_FORM_WITH_RES_B(sext_b, int32_t, int32_t, 0xB080, int32_t(0xffffff80))
+UTEST_R1_FORM_WITH_RES_B(sext_h, int32_t, int32_t, 0xB080, int32_t(0xffffb080))
+UTEST_R1_FORM_WITH_RES_B(zext_h, int32_t, int32_t, 0xB080, 0xB080)
 
 // -- Zbb: bitwise rotation --
 

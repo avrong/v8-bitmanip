@@ -5466,6 +5466,11 @@ void Simulator::DecodeCBType() {
 // (B)itmanip extension
 // use `return true` instead of `break` in cases
 bool Simulator::DecodeBRType() {
+  // Zbb: basic -- Zero-extension
+  if ((instr_.InstructionBits() & (kITypeMask | kImm12Mask)) == RO_ZEXT_H) {
+    set_rd(zext_xlen(uint16_t(rs1())));
+    return true;
+  }
   switch (instr_.InstructionBits() & kRTypeMask) {
     // Zba
 
@@ -5593,10 +5598,6 @@ bool Simulator::DecodeBIHType() {
     }
     case RO_SEXT_H: {
       set_rd(sext_xlen(int16_t(rs1())));
-      return true;
-    }
-    case RO_ZEXT_H: {
-      set_rd(zext_xlen(uint16_t(rs1())));
       return true;
     }
 
