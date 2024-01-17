@@ -19,9 +19,9 @@
 #include "src/compiler/operator.h"
 #include "src/compiler/simplified-operator.h"
 #include "src/compiler/turboshaft/assembler.h"
+#include "src/compiler/turboshaft/copying-phase.h"
 #include "src/compiler/turboshaft/index.h"
 #include "src/compiler/turboshaft/operations.h"
-#include "src/compiler/turboshaft/optimization-phase.h"
 #include "src/compiler/turboshaft/phase.h"
 #include "src/compiler/turboshaft/reducer-traits.h"
 #include "src/compiler/turboshaft/representations.h"
@@ -369,9 +369,10 @@ class MachineLoweringReducer : public Next {
         }
 
         V<Map> map = __ LoadMapField(input);
-        GOTO(done, __ Uint32LessThanOrEqual(
-                       __ TruncateWordPtrToWord32(__ BitcastTaggedToWord(map)),
-                       __ Word32Constant(InstanceTypeChecker::kLastStringMap)));
+        GOTO(done,
+             __ Uint32LessThanOrEqual(
+                 __ TruncateWordPtrToWord32(__ BitcastHeapObjectToWordPtr(map)),
+                 __ Word32Constant(InstanceTypeChecker::kLastStringMap)));
 
         BIND(done, result);
         return result;
@@ -385,9 +386,10 @@ class MachineLoweringReducer : public Next {
         }
 
         V<Map> map = __ LoadMapField(input);
-        GOTO(done, __ Word32Equal(
-                       __ TruncateWordPtrToWord32(__ BitcastTaggedToWord(map)),
-                       __ Word32Constant(StaticReadOnlyRoot::kSymbolMap)));
+        GOTO(done,
+             __ Word32Equal(
+                 __ TruncateWordPtrToWord32(__ BitcastHeapObjectToWordPtr(map)),
+                 __ Word32Constant(StaticReadOnlyRoot::kSymbolMap)));
 
         BIND(done, result);
         return result;
@@ -567,10 +569,8 @@ class MachineLoweringReducer : public Next {
         Label<Smi> done(this);
         GOTO_IF(LIKELY(__ ObjectIsSmi(input)), done, V<Smi>::Cast(input));
 
-        STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                          Oddball::kToNumberRawOffset);
         V<Float64> value = __ template LoadField<Float64>(
-            input, AccessBuilder::ForHeapNumberValue());
+            input, AccessBuilder::ForHeapNumberOrOddballValue());
         GOTO(done, __ TagSmi(__ ReversibleFloat64ToInt32(value)));
 
         BIND(done, result);
@@ -818,9 +818,13 @@ class MachineLoweringReducer : public Next {
                              __ Word32Constant(Name::kEmptyHashField));
           __ InitializeField(string, AccessBuilder::ForStringLength(),
                              __ Word32Constant(2));
-          __ Initialize(string, code, MemoryRepresentation::Uint32(),
-                        WriteBarrierKind::kNoWriteBarrier,
-                        SeqTwoByteString::kHeaderSize);
+          // Write the code as a single 32-bit value by adapting the elements
+          // access to SeqTwoByteString characters.
+          ElementAccess char_access =
+              AccessBuilder::ForSeqTwoByteStringCharacter();
+          char_access.machine_type = MachineType::Uint32();
+          __ InitializeNonArrayBufferElement(string, char_access,
+                                             __ IntPtrConstant(0), code);
           GOTO(done, __ FinishInitialization(std::move(string)));
         }
 
@@ -861,9 +865,9 @@ class MachineLoweringReducer : public Next {
                                __ Word32Constant(Name::kEmptyHashField));
             __ InitializeField(string, AccessBuilder::ForStringLength(),
                                __ Word32Constant(1));
-            __ Initialize(string, code, MemoryRepresentation::Uint16(),
-                          WriteBarrierKind::kNoWriteBarrier,
-                          SeqTwoByteString::kHeaderSize);
+            __ InitializeNonArrayBufferElement(
+                string, AccessBuilder::ForSeqTwoByteStringCharacter(),
+                __ IntPtrConstant(0), code);
             GOTO(done, __ FinishInitialization(std::move(string)));
           }
           END_IF
@@ -895,8 +899,7 @@ class MachineLoweringReducer : public Next {
           OpIndex test = __ Int32AddCheckOverflow(input, input);
           __ DeoptimizeIf(__ template Projection<Word32>(test, 1), frame_state,
                           DeoptimizeReason::kLostPrecision, feedback);
-          return __ BitcastWord32ToTagged(
-              __ template Projection<Word32>(test, 0));
+          return __ BitcastWord32ToSmi(__ template Projection<Word32>(test, 0));
         }
       } else {
         DCHECK_EQ(input_interpretation, ConvertUntaggedToJSPrimitiveOrDeoptOp::
@@ -920,8 +923,7 @@ class MachineLoweringReducer : public Next {
           OpIndex test = __ Int32AddCheckOverflow(i32, i32);
           __ DeoptimizeIf(__ template Projection<Word32>(test, 1), frame_state,
                           DeoptimizeReason::kLostPrecision, feedback);
-          return __ BitcastWord32ToTagged(
-              __ template Projection<Word32>(test, 0));
+          return __ BitcastWord32ToSmi(__ template Projection<Word32>(test, 0));
         }
       } else {
         DCHECK_EQ(input_interpretation, ConvertUntaggedToJSPrimitiveOrDeoptOp::
@@ -944,20 +946,18 @@ class MachineLoweringReducer : public Next {
       case ConvertJSPrimitiveToUntaggedOp::UntaggedKind::kInt32:
         if (input_assumptions ==
             ConvertJSPrimitiveToUntaggedOp::InputAssumptions::kSmi) {
-          return __ UntagSmi(object);
+          return __ UntagSmi(V<Smi>::Cast(object));
         } else if (input_assumptions ==
                    ConvertJSPrimitiveToUntaggedOp::InputAssumptions::
                        kNumberOrOddball) {
           Label<Word32> done(this);
 
           IF (LIKELY(__ ObjectIsSmi(object))) {
-            GOTO(done, __ UntagSmi(object));
+            GOTO(done, __ UntagSmi(V<Smi>::Cast(object)));
           }
           ELSE {
-            STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                              Oddball::kToNumberRawOffset);
             V<Float64> value = __ template LoadField<Float64>(
-                object, AccessBuilder::ForHeapNumberValue());
+                object, AccessBuilder::ForHeapNumberOrOddballValue());
             GOTO(done, __ ReversibleFloat64ToInt32(value));
           }
           END_IF
@@ -968,7 +968,8 @@ class MachineLoweringReducer : public Next {
           DCHECK_EQ(input_assumptions, ConvertJSPrimitiveToUntaggedOp::
                                            InputAssumptions::kPlainPrimitive);
           Label<Word32> done(this);
-          GOTO_IF(LIKELY(__ ObjectIsSmi(object)), done, __ UntagSmi(object));
+          GOTO_IF(LIKELY(__ ObjectIsSmi(object)), done,
+                  __ UntagSmi(V<Smi>::Cast(object)));
           V<Number> number =
               __ ConvertPlainPrimitiveToNumber(V<PlainPrimitive>::Cast(object));
           GOTO_IF(__ ObjectIsSmi(number), done, __ UntagSmi(number));
@@ -982,20 +983,19 @@ class MachineLoweringReducer : public Next {
       case ConvertJSPrimitiveToUntaggedOp::UntaggedKind::kInt64:
         if (input_assumptions ==
             ConvertJSPrimitiveToUntaggedOp::InputAssumptions::kSmi) {
-          return __ ChangeInt32ToInt64(__ UntagSmi(object));
+          return __ ChangeInt32ToInt64(__ UntagSmi(V<Smi>::Cast(object)));
         } else {
           DCHECK_EQ(input_assumptions, ConvertJSPrimitiveToUntaggedOp::
                                            InputAssumptions::kNumberOrOddball);
           Label<Word64> done(this);
 
           IF (LIKELY(__ ObjectIsSmi(object))) {
-            GOTO(done, __ ChangeInt32ToInt64(__ UntagSmi(object)));
+            GOTO(done,
+                 __ ChangeInt32ToInt64(__ UntagSmi(V<Smi>::Cast(object))));
           }
           ELSE {
-            STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                              Oddball::kToNumberRawOffset);
             V<Float64> value = __ template LoadField<Float64>(
-                object, AccessBuilder::ForHeapNumberValue());
+                object, AccessBuilder::ForHeapNumberOrOddballValue());
             GOTO(done, __ ReversibleFloat64ToInt64(value));
           }
           END_IF
@@ -1011,13 +1011,11 @@ class MachineLoweringReducer : public Next {
         Label<Word32> done(this);
 
         IF (LIKELY(__ ObjectIsSmi(object))) {
-          GOTO(done, __ UntagSmi(object));
+          GOTO(done, __ UntagSmi(V<Smi>::Cast(object)));
         }
         ELSE {
-          STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                            Oddball::kToNumberRawOffset);
           V<Float64> value = __ template LoadField<Float64>(
-              object, AccessBuilder::ForHeapNumberValue());
+              object, AccessBuilder::ForHeapNumberOrOddballValue());
           GOTO(done, __ ReversibleFloat64ToUint32(value));
         }
         END_IF
@@ -1035,13 +1033,12 @@ class MachineLoweringReducer : public Next {
           Label<Float64> done(this);
 
           IF (LIKELY(__ ObjectIsSmi(object))) {
-            GOTO(done, __ ChangeInt32ToFloat64(__ UntagSmi(object)));
+            GOTO(done,
+                 __ ChangeInt32ToFloat64(__ UntagSmi(V<Smi>::Cast(object))));
           }
           ELSE {
-            STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                              Oddball::kToNumberRawOffset);
             V<Float64> value = __ template LoadField<Float64>(
-                object, AccessBuilder::ForHeapNumberValue());
+                object, AccessBuilder::ForHeapNumberOrOddballValue());
             GOTO(done, value);
           }
           END_IF
@@ -1053,7 +1050,7 @@ class MachineLoweringReducer : public Next {
                                            InputAssumptions::kPlainPrimitive);
           Label<Float64> done(this);
           GOTO_IF(LIKELY(__ ObjectIsSmi(object)), done,
-                  __ ChangeInt32ToFloat64(__ UntagSmi(object)));
+                  __ ChangeInt32ToFloat64(__ UntagSmi(V<Smi>::Cast(object))));
           V<Number> number =
               __ ConvertPlainPrimitiveToNumber(V<PlainPrimitive>::Cast(object));
           GOTO_IF(__ ObjectIsSmi(number), done,
@@ -1080,7 +1077,7 @@ class MachineLoweringReducer : public Next {
             ConvertJSPrimitiveToUntaggedOrDeoptOp::JSPrimitiveKind::kSmi) {
           __ DeoptimizeIfNot(__ ObjectIsSmi(object), frame_state,
                              DeoptimizeReason::kNotASmi, feedback);
-          return __ UntagSmi(object);
+          return __ UntagSmi(V<Smi>::Cast(object));
         } else {
           DCHECK_EQ(
               from_kind,
@@ -1088,7 +1085,7 @@ class MachineLoweringReducer : public Next {
           Label<Word32> done(this);
 
           IF(LIKELY(__ ObjectIsSmi(object))) {
-            GOTO(done, __ UntagSmi(object));
+            GOTO(done, __ UntagSmi(V<Smi>::Cast(object)));
           }
           ELSE {
             V<Map> map = __ LoadMapField(object);
@@ -1116,7 +1113,7 @@ class MachineLoweringReducer : public Next {
         Label<Word64> done(this);
 
         IF(LIKELY(__ ObjectIsSmi(object))) {
-          GOTO(done, __ ChangeInt32ToInt64(__ UntagSmi(object)));
+          GOTO(done, __ ChangeInt32ToInt64(__ UntagSmi(V<Smi>::Cast(object))));
         }
         ELSE {
           V<Map> map = __ LoadMapField(object);
@@ -1140,7 +1137,8 @@ class MachineLoweringReducer : public Next {
         // In the Smi case, just convert to int32 and then float64.
         // Otherwise, check heap numberness and load the number.
         IF(__ ObjectIsSmi(object)) {
-          GOTO(done, __ ChangeInt32ToFloat64(__ UntagSmi(object)));
+          GOTO(done,
+               __ ChangeInt32ToFloat64(__ UntagSmi(V<Smi>::Cast(object))));
         }
         ELSE {
           GOTO(done, ConvertHeapObjectToFloat64OrDeopt(object, frame_state,
@@ -1158,7 +1156,7 @@ class MachineLoweringReducer : public Next {
 
         IF(LIKELY(__ ObjectIsSmi(object))) {
           // In the Smi case, just convert to intptr_t.
-          GOTO(done, __ ChangeInt32ToIntPtr(__ UntagSmi(object)));
+          GOTO(done, __ ChangeInt32ToIntPtr(__ UntagSmi(V<Smi>::Cast(object))));
         }
         ELSE {
           V<Map> map = __ LoadMapField(object);
@@ -1203,7 +1201,7 @@ class MachineLoweringReducer : public Next {
           ELSE {
 #if V8_STATIC_ROOTS_BOOL
             V<Word32> is_string_map = __ Uint32LessThanOrEqual(
-                __ TruncateWordPtrToWord32(__ BitcastTaggedToWord(map)),
+                __ TruncateWordPtrToWord32(__ BitcastHeapObjectToWordPtr(map)),
                 __ Word32Constant(InstanceTypeChecker::kLastStringMap));
 #else
             V<Word32> instance_type = __ LoadInstanceTypeField(map);
@@ -1252,13 +1250,11 @@ class MachineLoweringReducer : public Next {
         Label<Word32> done(this);
 
         IF (LIKELY(__ ObjectIsSmi(object))) {
-          GOTO(done, __ UntagSmi(object));
+          GOTO(done, __ UntagSmi(V<Smi>::Cast(object)));
         }
         ELSE {
-          STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                            Oddball::kToNumberRawOffset);
           V<Float64> number_value = __ template LoadField<Float64>(
-              object, AccessBuilder::ForHeapNumberValue());
+              object, AccessBuilder::ForHeapNumberOrOddballValue());
           GOTO(done, __ JSTruncateFloat64ToWord32(number_value));
         }
         END_IF
@@ -1311,16 +1307,17 @@ class MachineLoweringReducer : public Next {
         // Undefined is the first root, so it's the smallest possible pointer
         // value, which means we don't have to subtract it for the range check.
         ReadOnlyRoots roots(isolate_);
-        static_assert(StaticReadOnlyRoot::kUndefinedValue + Undefined::kSize ==
+        static_assert(StaticReadOnlyRoot::kUndefinedValue + sizeof(Undefined) ==
                       StaticReadOnlyRoot::kNullValue);
-        static_assert(StaticReadOnlyRoot::kNullValue + Null::kSize ==
+        static_assert(StaticReadOnlyRoot::kNullValue + sizeof(Null) ==
                       StaticReadOnlyRoot::kempty_string);
-        static_assert(StaticReadOnlyRoot::kempty_string + String::kHeaderSize ==
+        static_assert(StaticReadOnlyRoot::kempty_string +
+                          SeqOneByteString::SizeFor(0) ==
                       StaticReadOnlyRoot::kFalseValue);
-        static_assert(StaticReadOnlyRoot::kFalseValue + False::kSize ==
+        static_assert(StaticReadOnlyRoot::kFalseValue + sizeof(False) ==
                       StaticReadOnlyRoot::kTrueValue);
-        V<Word32> object_as_word32 =
-            __ TruncateWordPtrToWord32(__ BitcastTaggedToWord(object));
+        V<Word32> object_as_word32 = __ TruncateWordPtrToWord32(
+            __ BitcastHeapObjectToWordPtr(V<HeapObject>::Cast(object)));
         V<Word32> true_as_word32 =
             __ Word32Constant(StaticReadOnlyRoot::kTrueValue);
         GOTO_IF(__ Uint32LessThan(object_as_word32, true_as_word32), done, 0);
@@ -1408,7 +1405,8 @@ class MachineLoweringReducer : public Next {
               TruncateJSPrimitiveToUntaggedOrDeoptOp::UntaggedKind::kInt32);
     Label<Word32> done(this);
     // In the Smi case, just convert to int32.
-    GOTO_IF(LIKELY(__ ObjectIsSmi(input)), done, __ UntagSmi(input));
+    GOTO_IF(LIKELY(__ ObjectIsSmi(input)), done,
+            __ UntagSmi(V<Smi>::Cast(input)));
 
     // Otherwise, check that it's a heap number or oddball and truncate the
     // value to int32.
@@ -1432,7 +1430,7 @@ class MachineLoweringReducer : public Next {
     // addresses.
     return __ Uint32LessThan(
         InstanceTypeChecker::kNonJsReceiverMapLimit,
-        __ TruncateWordPtrToWord32(__ BitcastTaggedToWord(value_map)));
+        __ TruncateWordPtrToWord32(__ BitcastHeapObjectToWordPtr(value_map)));
 #else
     static_assert(LAST_TYPE == LAST_JS_RECEIVER_TYPE);
     V<Word32> value_instance_type = __ LoadInstanceTypeField(value_map);
@@ -1511,7 +1509,7 @@ class MachineLoweringReducer : public Next {
     // Allocate the resulting ConsString.
     BIND(allocate_string, map);
     auto string = __ template Allocate<String>(
-        __ IntPtrConstant(ConsString::kSize), AllocationType::kYoung);
+        __ IntPtrConstant(sizeof(ConsString)), AllocationType::kYoung);
     __ InitializeField(string, AccessBuilder::ForMap(), map);
     __ InitializeField(string, AccessBuilder::ForNameRawHashField(),
                        __ Word32Constant(Name::kEmptyHashField));
@@ -1541,11 +1539,9 @@ class MachineLoweringReducer : public Next {
         access = {kTaggedBase, FixedDoubleArray::kHeaderSize,
                   compiler::Type::NumberOrHole(), MachineType::Float64(),
                   kNoWriteBarrier};
-        STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                          Oddball::kToNumberRawOffset);
         the_hole_value = __ template LoadField<Float64>(
             __ HeapConstant(factory_->the_hole_value()),
-            AccessBuilder::ForHeapNumberValue());
+            AccessBuilder::ForHeapNumberOrOddballValue());
         break;
       }
       case NewArrayOp::Kind::kObject: {
@@ -1600,7 +1596,7 @@ class MachineLoweringReducer : public Next {
     V<Float64> empty_value =
         __ Float64Constant(is_max ? -V8_INFINITY : V8_INFINITY);
     V<WordPtr> array_length =
-        __ ChangeInt32ToIntPtr(__ UntagSmi(__ template LoadField<Tagged>(
+        __ ChangeInt32ToIntPtr(__ UntagSmi(__ template LoadField<Smi>(
             array, AccessBuilder::ForJSArrayLength(
                        ElementsKind::PACKED_DOUBLE_ELEMENTS))));
     V<Tagged> elements = __ template LoadField<Tagged>(
@@ -1643,7 +1639,8 @@ class MachineLoweringReducer : public Next {
 
     // Check if field is a mutable double field.
     GOTO_IF(
-        UNLIKELY(__ TruncateWordPtrToWord32(__ WordPtrBitwiseAnd(index, 0x1))),
+        UNLIKELY(__ Word32Equal(
+            __ Word32BitwiseAnd(__ TruncateWordPtrToWord32(index), 0x1), 0x1)),
         double_field);
 
     {
@@ -1775,18 +1772,16 @@ class MachineLoweringReducer : public Next {
     UNREACHABLE();
   }
 
-  V<Word32> REDUCE(BigIntEqual)(V<Tagged> left, V<Tagged> right) {
-    return CallBuiltinForBigIntOp(Builtin::kBigIntEqual, {left, right});
-  }
-
-  V<Word32> REDUCE(BigIntComparison)(V<Tagged> left, V<Tagged> right,
-                                     BigIntComparisonOp::Kind kind) {
-    if (kind == BigIntComparisonOp::Kind::kLessThan) {
-      return CallBuiltinForBigIntOp(Builtin::kBigIntLessThan, {left, right});
-    } else {
-      DCHECK_EQ(kind, BigIntComparisonOp::Kind::kLessThanOrEqual);
-      return CallBuiltinForBigIntOp(Builtin::kBigIntLessThanOrEqual,
-                                    {left, right});
+  V<Boolean> REDUCE(BigIntComparison)(V<Tagged> left, V<Tagged> right,
+                                      BigIntComparisonOp::Kind kind) {
+    switch (kind) {
+      case BigIntComparisonOp::Kind::kEqual:
+        return CallBuiltinForBigIntOp(Builtin::kBigIntEqual, {left, right});
+      case BigIntComparisonOp::Kind::kLessThan:
+        return CallBuiltinForBigIntOp(Builtin::kBigIntLessThan, {left, right});
+      case BigIntComparisonOp::Kind::kLessThanOrEqual:
+        return CallBuiltinForBigIntOp(Builtin::kBigIntLessThanOrEqual,
+                                      {left, right});
     }
   }
 
@@ -1819,10 +1814,10 @@ class MachineLoweringReducer : public Next {
         V<Word32> representation =
             __ Word32BitwiseAnd(instance_type, kStringRepresentationMask);
 
-        IF(__ Int32LessThanOrEqual(representation, kConsStringTag)) {
+        IF (__ Int32LessThanOrEqual(representation, kConsStringTag)) {
           {
             // if_lessthanoreq_cons
-            IF(__ Word32Equal(representation, kConsStringTag)) {
+            IF (__ Word32Equal(representation, kConsStringTag)) {
               // if_consstring
               V<String> second = __ template LoadField<String>(
                   *receiver, AccessBuilder::ForConsStringSecond());
@@ -1847,13 +1842,13 @@ class MachineLoweringReducer : public Next {
         ELSE {
           // if_greaterthan_cons
           {
-            IF(__ Word32Equal(representation, kThinStringTag)) {
+            IF (__ Word32Equal(representation, kThinStringTag)) {
               // if_thinstring
               receiver = __ template LoadField<String>(
                   *receiver, AccessBuilder::ForThinStringActual());
               GOTO(loop);
             }
-            ELSE_IF(__ Word32Equal(representation, kExternalStringTag)) {
+            ELSE_IF (__ Word32Equal(representation, kExternalStringTag)) {
               // if_externalstring
               // We need to bailout to the runtime for uncached external
               // strings.
@@ -1865,9 +1860,9 @@ class MachineLoweringReducer : public Next {
 
               OpIndex data = __ LoadField(
                   *receiver, AccessBuilder::ForExternalStringResourceData());
-              IF(__ Word32Equal(
-                  __ Word32BitwiseAnd(instance_type, kStringEncodingMask),
-                  kTwoByteStringTag)) {
+              IF (__ Word32Equal(
+                      __ Word32BitwiseAnd(instance_type, kStringEncodingMask),
+                      kTwoByteStringTag)) {
                 // if_twobyte
                 constexpr uint8_t twobyte_size_log2 = 1;
                 V<Word32> value = __ Load(
@@ -1889,7 +1884,7 @@ class MachineLoweringReducer : public Next {
             }
             ELSE_IF (LIKELY(__ Word32Equal(representation, kSlicedStringTag))) {
               // if_slicedstring
-              V<Tagged> offset = __ template LoadField<Tagged>(
+              V<Smi> offset = __ template LoadField<Smi>(
                   *receiver, AccessBuilder::ForSlicedStringOffset());
               receiver = __ template LoadField<String>(
                   *receiver, AccessBuilder::ForSlicedStringParent());
@@ -1897,16 +1892,19 @@ class MachineLoweringReducer : public Next {
                   *position, __ ChangeInt32ToIntPtr(__ UntagSmi(offset)));
               GOTO(loop);
             }
-            ELSE { GOTO(runtime); }
+            ELSE {
+              GOTO(runtime);
+            }
             END_IF
           }
         }
         END_IF
 
         if (BIND(runtime)) {
-          V<Word32> value = __ UntagSmi(__ CallRuntime_StringCharCodeAt(
-              isolate_, __ NoContextConstant(), *receiver,
-              __ TagSmi(__ TruncateWordPtrToWord32(*position))));
+          V<Word32> value =
+              __ UntagSmi(V<Smi>::Cast(__ CallRuntime_StringCharCodeAt(
+                  isolate_, __ NoContextConstant(), *receiver,
+                  __ TagSmi(__ TruncateWordPtrToWord32(*position)))));
           GOTO(done, value);
         }
       }
@@ -1980,27 +1978,6 @@ class MachineLoweringReducer : public Next {
     return __ CallBuiltin_StringSubstring(isolate_, string, s, e);
   }
 
-  V<Boolean> REDUCE(StringEqual)(V<String> left, V<String> right) {
-    Label<Boolean> done(this);
-
-    GOTO_IF(__ TaggedEqual(left, right), done,
-            __ HeapConstant(factory_->true_value()));
-
-    V<Word32> left_length =
-        __ template LoadField<Word32>(left, AccessBuilder::ForStringLength());
-    V<Word32> right_length =
-        __ template LoadField<Word32>(right, AccessBuilder::ForStringLength());
-    IF(__ Word32Equal(left_length, right_length)) {
-      GOTO(done,
-           __ CallBuiltin_StringEqual(isolate_, left, right,
-                                      __ ChangeInt32ToIntPtr(left_length)));
-    }
-    ELSE { GOTO(done, __ HeapConstant(factory_->false_value())); }
-
-    BIND(done, result);
-    return result;
-  }
-
   V<String> REDUCE(StringConcat)(V<String> left, V<String> right) {
     // TODO(nicohartmann@): Port StringBuilder once it is stable.
     return __ CallBuiltin_StringAdd_CheckNone(isolate_, __ NoContextConstant(),
@@ -2010,6 +1987,28 @@ class MachineLoweringReducer : public Next {
   V<Boolean> REDUCE(StringComparison)(V<String> left, V<String> right,
                                       StringComparisonOp::Kind kind) {
     switch (kind) {
+      case StringComparisonOp::Kind::kEqual: {
+        Label<Boolean> done(this);
+
+        GOTO_IF(__ TaggedEqual(left, right), done,
+                __ HeapConstant(factory_->true_value()));
+
+        V<Word32> left_length = __ template LoadField<Word32>(
+            left, AccessBuilder::ForStringLength());
+        V<Word32> right_length = __ template LoadField<Word32>(
+            right, AccessBuilder::ForStringLength());
+        IF (__ Word32Equal(left_length, right_length)) {
+          GOTO(done,
+               __ CallBuiltin_StringEqual(isolate_, left, right,
+                                          __ ChangeInt32ToIntPtr(left_length)));
+        }
+        ELSE {
+          GOTO(done, __ HeapConstant(factory_->false_value()));
+        }
+
+        BIND(done, result);
+        return result;
+      }
       case StringComparisonOp::Kind::kLessThan:
         return __ CallBuiltin_StringLessThan(isolate_, left, right);
       case StringComparisonOp::Kind::kLessThanOrEqual:
@@ -2219,6 +2218,7 @@ class MachineLoweringReducer : public Next {
         break;
       }
       case TransitionAndStoreArrayElementOp::Kind::kNumberElement: {
+        Label<> done(this);
         // Possibly transition array based on input and store.
         //
         //   -- TRANSITION PHASE -----------------
@@ -2226,7 +2226,11 @@ class MachineLoweringReducer : public Next {
         //   if kind == HOLEY_SMI_ELEMENTS {
         //     Transition array to HOLEY_DOUBLE_ELEMENTS
         //   } else if kind != HOLEY_DOUBLE_ELEMENTS {
-        //     This is UNREACHABLE, execute a debug break.
+        //     if kind == HOLEY_ELEMENTS {
+        //       Store value as a HeapNumber in array[index].
+        //     } else {
+        //       This is UNREACHABLE, execute a debug break.
+        //     }
         //   }
         //
         //   -- STORE PHASE ----------------------
@@ -2241,11 +2245,22 @@ class MachineLoweringReducer : public Next {
         }
         ELSE {
           // We expect that our input array started at HOLEY_SMI_ELEMENTS, and
-          // climbs the lattice up to HOLEY_DOUBLE_ELEMENTS. Force a debug break
-          // if this assumption is broken. It also would be the case that
-          // loop peeling can break this assumption.
+          // climbs the lattice up to HOLEY_DOUBLE_ELEMENTS. However, loop
+          // peeling can break this assumption, because in the peeled iteration,
+          // the array might have transitioned to HOLEY_ELEMENTS kind, so we
+          // handle this as well.
           IF_NOT (LIKELY(
                       __ Word32Equal(elements_kind, HOLEY_DOUBLE_ELEMENTS))) {
+            IF (__ Word32Equal(elements_kind, HOLEY_ELEMENTS)) {
+              V<Object> elements = __ template LoadField<Object>(
+                  array, AccessBuilder::ForJSObjectElements());
+              // Our ElementsKind is HOLEY_ELEMENTS.
+              __ StoreNonArrayBufferElement(
+                  elements, AccessBuilder::ForFixedArrayElement(HOLEY_ELEMENTS),
+                  index, AllocateHeapNumberWithValue(value));
+              GOTO(done);
+            }
+            END_IF
             __ Unreachable();
           }
           END_IF
@@ -2257,6 +2272,9 @@ class MachineLoweringReducer : public Next {
         __ StoreNonArrayBufferElement(
             elements, AccessBuilder::ForFixedDoubleArrayElement(), index,
             __ Float64SilenceNaN(value));
+        GOTO(done);
+
+        BIND(done);
         break;
       }
       case TransitionAndStoreArrayElementOp::Kind::kOddballElement:
@@ -2680,7 +2698,7 @@ class MachineLoweringReducer : public Next {
 
   OpIndex REDUCE(StoreMessage)(V<WordPtr> offset, V<Object> object) {
     __ StoreField(offset, AccessBuilder::ForExternalIntPtr(),
-                  __ BitcastTaggedToWord(object));
+                  __ BitcastTaggedToWordPtr(object));
     return OpIndex::Invalid();
   }
 
@@ -2839,8 +2857,9 @@ class MachineLoweringReducer : public Next {
               LoadOp::Kind::TaggedBase(), MemoryRepresentation::AnyTagged());
 
           IF (LIKELY(__ ObjectIsSmi(candidate_key))) {
-            GOTO_IF(__ Word32Equal(__ UntagSmi(candidate_key), key), done,
-                    candidate);
+            GOTO_IF(
+                __ Word32Equal(__ UntagSmi(V<Smi>::Cast(candidate_key)), key),
+                done, candidate);
           }
           ELSE_IF (__ TaggedEqual(
                        __ LoadMapField(candidate_key),
@@ -2914,8 +2933,7 @@ class MachineLoweringReducer : public Next {
     OpIndex add = __ Int32AddCheckOverflow(input, input);
     V<Word32> check = __ template Projection<Word32>(add, 1);
     GOTO_IF(UNLIKELY(check), *overflow);
-    GOTO(*done,
-         __ BitcastWord32ToTagged(__ template Projection<Word32>(add, 0)));
+    GOTO(*done, __ BitcastWord32ToSmi(__ template Projection<Word32>(add, 0)));
   }
 
   // `IsNonZero` converts any non-0 value into 1.
@@ -2952,8 +2970,6 @@ class MachineLoweringReducer : public Next {
       case ConvertJSPrimitiveToUntaggedOrDeoptOp::JSPrimitiveKind::
           kNumberOrBoolean: {
         IF_NOT(check_number) {
-          STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                            Oddball::kToNumberRawOffset);
           __ DeoptimizeIfNot(
               __ TaggedEqual(map, __ HeapConstant(factory_->boolean_map())),
               frame_state, DeoptimizeReason::kNotANumberOrBoolean, feedback);
@@ -2966,8 +2982,6 @@ class MachineLoweringReducer : public Next {
         IF_NOT(check_number) {
           // For oddballs also contain the numeric value, let us just check that
           // we have an oddball here.
-          STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
-                                            Oddball::kToNumberRawOffset);
           V<Word32> instance_type = __ LoadInstanceTypeField(map);
           __ DeoptimizeIfNot(__ Word32Equal(instance_type, ODDBALL_TYPE),
                              frame_state,
@@ -2977,8 +2991,8 @@ class MachineLoweringReducer : public Next {
         break;
       }
     }
-    return __ template LoadField<Float64>(heap_object,
-                                          AccessBuilder::ForHeapNumberValue());
+    return __ template LoadField<Float64>(
+        heap_object, AccessBuilder::ForHeapNumberOrOddballValue());
   }
 
   OpIndex LoadFromSeqString(V<Tagged> receiver, V<WordPtr> position,
@@ -3067,7 +3081,7 @@ class MachineLoweringReducer : public Next {
 
   V<WordPtr> BuildTypedArrayDataPointer(V<Object> base, V<WordPtr> external) {
     if (__ matcher().MatchZero(base)) return external;
-    V<WordPtr> untagged_base = __ BitcastTaggedToWord(base);
+    V<WordPtr> untagged_base = __ BitcastTaggedToWordPtr(base);
     if (COMPRESS_POINTERS_BOOL) {
       // Zero-extend Tagged_t to UintPtr according to current compression
       // scheme so that the addition with |external_pointer| (which already

@@ -14,7 +14,7 @@ proposal_flags = [
     },
     {
         'name': 'tail-call',
-        'flags': ['--experimental-wasm-return-call']
+        'flags': []
     },
     {
         'name': 'memory64',
@@ -22,7 +22,7 @@ proposal_flags = [
     },
     {
         'name': 'extended-const',
-        'flags': ['--experimental-wasm-extended-const']
+        'flags': []
     },
     {
         'name': 'function-references',
@@ -41,6 +41,12 @@ proposal_flags = [
         'name': 'multi-memory',
         'flags': ['--experimental-wasm-multi-memory']
     },
+    {
+        'name': 'exception-handling',
+        # This flag enables the *new* exception handling proposal. The legacy
+        # proposal is enabled by default.
+        'flags': ['--experimental-wasm-exnref', '--turboshaft-wasm']
+    }
 ]
 
 

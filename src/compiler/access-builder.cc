@@ -47,6 +47,13 @@ FieldAccess AccessBuilder::ForHeapNumberValue() {
 }
 
 // static
+FieldAccess AccessBuilder::ForHeapNumberOrOddballValue() {
+  STATIC_ASSERT_FIELD_OFFSETS_EQUAL(HeapNumber::kValueOffset,
+                                    offsetof(Oddball, to_number_raw_));
+  return ForHeapNumberValue();
+}
+
+// static
 FieldAccess AccessBuilder::ForBigIntBitfield() {
   FieldAccess access = {
       kTaggedBase,      BigInt::kBitfieldOffset,  MaybeHandle<Name>(),
@@ -638,6 +645,7 @@ FieldAccess AccessBuilder::ForFixedArrayLength() {
                         MachineType::TaggedSigned(),
                         kNoWriteBarrier,
                         "FixedArrayLength"};
+  access.is_immutable = true;
   return access;
 }
 
@@ -651,6 +659,7 @@ FieldAccess AccessBuilder::ForWeakFixedArrayLength() {
                         MachineType::TaggedSigned(),
                         kNoWriteBarrier,
                         "WeakFixedArrayLength"};
+  access.is_immutable = true;
   return access;
 }
 
@@ -748,6 +757,7 @@ FieldAccess AccessBuilder::ForMapInstanceType() {
       kTaggedBase,      Map::kInstanceTypeOffset,  Handle<Name>(),
       OptionalMapRef(), TypeCache::Get()->kUint16, MachineType::Uint16(),
       kNoWriteBarrier,  "MapInstanceType"};
+  access.is_immutable = true;
   return access;
 }
 
@@ -792,7 +802,7 @@ FieldAccess AccessBuilder::ForModuleRegularImports() {
 
 // static
 FieldAccess AccessBuilder::ForNameRawHashField() {
-  FieldAccess access = {kTaggedBase,        Name::kRawHashFieldOffset,
+  FieldAccess access = {kTaggedBase,        offsetof(Name, raw_hash_field_),
                         Handle<Name>(),     OptionalMapRef(),
                         Type::Unsigned32(), MachineType::Uint32(),
                         kNoWriteBarrier,    "NameRawHashField"};
@@ -811,58 +821,66 @@ FieldAccess AccessBuilder::ForFreeSpaceSize() {
 // static
 FieldAccess AccessBuilder::ForStringLength() {
   FieldAccess access = {kTaggedBase,
-                        String::kLengthOffset,
+                        offsetof(String, length_),
                         Handle<Name>(),
                         OptionalMapRef(),
                         TypeCache::Get()->kStringLengthType,
                         MachineType::Uint32(),
                         kNoWriteBarrier,
                         "StringLength"};
+  access.is_immutable = true;
   return access;
 }
 
 // static
 FieldAccess AccessBuilder::ForConsStringFirst() {
-  FieldAccess access = {kTaggedBase,          ConsString::kFirstOffset,
+  FieldAccess access = {kTaggedBase,          offsetof(ConsString, first_),
                         Handle<Name>(),       OptionalMapRef(),
                         Type::String(),       MachineType::TaggedPointer(),
                         kPointerWriteBarrier, "ConsStringFirst"};
+  // Not immutable since flattening can mutate.
+  access.is_immutable = false;
   return access;
 }
 
 // static
 FieldAccess AccessBuilder::ForConsStringSecond() {
-  FieldAccess access = {kTaggedBase,          ConsString::kSecondOffset,
+  FieldAccess access = {kTaggedBase,          offsetof(ConsString, second_),
                         Handle<Name>(),       OptionalMapRef(),
                         Type::String(),       MachineType::TaggedPointer(),
                         kPointerWriteBarrier, "ConsStringSecond"};
+  // Not immutable since flattening can mutate.
+  access.is_immutable = false;
   return access;
 }
 
 // static
 FieldAccess AccessBuilder::ForThinStringActual() {
-  FieldAccess access = {kTaggedBase,          ThinString::kActualOffset,
+  FieldAccess access = {kTaggedBase,          offsetof(ThinString, actual_),
                         Handle<Name>(),       OptionalMapRef(),
                         Type::String(),       MachineType::TaggedPointer(),
                         kPointerWriteBarrier, "ThinStringActual"};
+  access.is_immutable = true;
   return access;
 }
 
 // static
 FieldAccess AccessBuilder::ForSlicedStringOffset() {
-  FieldAccess access = {kTaggedBase,         SlicedString::kOffsetOffset,
+  FieldAccess access = {kTaggedBase,         offsetof(SlicedString, offset_),
                         Handle<Name>(),      OptionalMapRef(),
                         Type::SignedSmall(), MachineType::TaggedSigned(),
                         kNoWriteBarrier,     "SlicedStringOffset"};
+  access.is_immutable = true;
   return access;
 }
 
 // static
 FieldAccess AccessBuilder::ForSlicedStringParent() {
-  FieldAccess access = {kTaggedBase,          SlicedString::kParentOffset,
+  FieldAccess access = {kTaggedBase,          offsetof(SlicedString, parent_),
                         Handle<Name>(),       OptionalMapRef(),
                         Type::String(),       MachineType::TaggedPointer(),
                         kPointerWriteBarrier, "SlicedStringParent"};
+  access.is_immutable = true;
   return access;
 }
 
@@ -870,7 +888,7 @@ FieldAccess AccessBuilder::ForSlicedStringParent() {
 FieldAccess AccessBuilder::ForExternalStringResourceData() {
   FieldAccess access = {
       kTaggedBase,
-      ExternalString::kResourceDataOffset,
+      offsetof(ExternalString, resource_data_),
       Handle<Name>(),
       OptionalMapRef(),
       Type::ExternalPointer(),
@@ -886,7 +904,7 @@ FieldAccess AccessBuilder::ForExternalStringResourceData() {
 
 // static
 ElementAccess AccessBuilder::ForSeqOneByteStringCharacter() {
-  ElementAccess access = {kTaggedBase, SeqOneByteString::kHeaderSize,
+  ElementAccess access = {kTaggedBase, OFFSET_OF_DATA_START(SeqOneByteString),
                           TypeCache::Get()->kUint8, MachineType::Uint8(),
                           kNoWriteBarrier};
   return access;
@@ -894,7 +912,7 @@ ElementAccess AccessBuilder::ForSeqOneByteStringCharacter() {
 
 // static
 ElementAccess AccessBuilder::ForSeqTwoByteStringCharacter() {
-  ElementAccess access = {kTaggedBase, SeqTwoByteString::kHeaderSize,
+  ElementAccess access = {kTaggedBase, OFFSET_OF_DATA_START(SeqTwoByteString),
                           TypeCache::Get()->kUint16, MachineType::Uint16(),
                           kNoWriteBarrier};
   return access;

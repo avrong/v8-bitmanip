@@ -30,6 +30,21 @@ static_assert(
     kV8MaxRttSubtypingDepth <=
     std::numeric_limits<decltype(TypeDefinition().subtyping_depth)>::max());
 
+// static
+int WasmMemory::GetMemory64GuardsShift(uint64_t max_memory_size) {
+  // For memory64 we need a guard region that is at least twice the size of the
+  // maximum size of the Wasm memory. In order to speed-up bounds checks, we
+  // allocate the greater power-of-two size.
+  DCHECK_NE(max_memory_size, 0U);
+  size_t min_guards_size = 2 * max_memory_size;
+  int guards_shift = 63 - base::bits::CountLeadingZeros64(min_guards_size);
+  DCHECK_GE(guards_shift, 0);
+  if (!base::bits::IsPowerOfTwo(min_guards_size)) {
+    guards_shift++;
+  }
+  return guards_shift;
+}
+
 template <class Value>
 void AdaptiveMap<Value>::FinishInitialization() {
   uint32_t count = 0;
@@ -153,6 +168,9 @@ int AsmJsOffsetInformation::GetSourcePosition(int declared_func_index,
   };
   SLOW_DCHECK(std::is_sorted(function_offsets.begin(), function_offsets.end(),
                              byte_offset_less));
+  // If there are no positions recorded, map offset 0 (for function entry) to
+  // position 0.
+  if (function_offsets.empty() && byte_offset == 0) return 0;
   auto it =
       std::lower_bound(function_offsets.begin(), function_offsets.end(),
                        AsmJsOffsetEntry{byte_offset, 0, 0}, byte_offset_less);

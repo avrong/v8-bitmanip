@@ -11,7 +11,7 @@
 #include "src/builtins/builtins-promise.h"
 #include "src/builtins/builtins-string-gen.h"
 #include "src/builtins/builtins-utils-inl.h"
-#include "src/codegen/code-stub-assembler.h"
+#include "src/codegen/code-stub-assembler-inl.h"
 #include "src/codegen/interface-descriptors-inl.h"
 #include "src/compiler/node.h"
 #include "src/debug/debug.h"
@@ -2079,7 +2079,7 @@ TEST(PopAndReturnFromTFCBuiltinWithStackParameters) {
   // Setup CSA for creating TFC-style builtin with stack arguments.
   // For the testing purposes we need any interface descriptor that has at
   // least one argument passed on stack.
-  using Descriptor = FlatMapIntoArrayDescriptor;
+  using Descriptor = FlattenIntoArrayWithMapFnDescriptor;
   Descriptor descriptor;
   CHECK_LT(0, Descriptor::GetStackParameterCount());
 
@@ -3020,7 +3020,7 @@ TEST(AllocateFunctionWithMapAndContext) {
   CHECK_EQ(isolate->factory()
                ->promise_capability_default_resolve_shared_fun()
                ->GetCode(isolate),
-           fun->code());
+           fun->code(isolate));
 }
 
 TEST(CreatePromiseGetCapabilitiesExecutorContext) {
@@ -3971,12 +3971,11 @@ void TestCallJumpBuiltin(CallJumpMode mode,
 
     TNode<Smi> index = m.SmiConstant(2);
 
-    Callable callable = Builtins::CallableFor(isolate, Builtin::kStringRepeat);
     if (mode == kCall) {
-      m.Return(m.CallStub(callable, context, str, index));
+      m.Return(m.CallBuiltin(Builtin::kStringRepeat, context, str, index));
     } else {
       DCHECK_EQ(mode, kTailCall);
-      m.TailCallStub(callable, context, str, index);
+      m.TailCallBuiltin(Builtin::kStringRepeat, context, str, index);
     }
   }
   AssemblerOptions options = AssemblerOptions::Default(isolate);

@@ -1010,6 +1010,10 @@ class Simulator : public SimulatorBase {
   void DecodeCSType();
   void DecodeCJType();
   void DecodeCBType();
+  // (B)itmanip extension
+  bool DecodeBRType();
+  bool DecodeBIType();
+  bool DecodeBIHType();
 #ifdef CAN_USE_RVV_INSTRUCTIONS
   void DecodeVType();
   void DecodeRvvIVV();

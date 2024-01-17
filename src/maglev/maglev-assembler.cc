@@ -6,6 +6,7 @@
 
 #include "src/maglev/maglev-assembler-inl.h"
 #include "src/maglev/maglev-code-generator.h"
+#include "src/numbers/conversions.h"
 
 namespace v8 {
 namespace internal {
@@ -31,8 +32,9 @@ void MaglevAssembler::AllocateTwoByteString(RegisterSnapshot register_snapshot,
   Allocate(register_snapshot, result, size);
   StoreTaggedSignedField(result, size - kObjectAlignment, Smi::zero());
   SetMapAsRoot(result, RootIndex::kSeqTwoByteStringMap);
-  StoreInt32Field(result, Name::kRawHashFieldOffset, Name::kEmptyHashField);
-  StoreInt32Field(result, String::kLengthOffset, length);
+  StoreInt32Field(result, offsetof(Name, raw_hash_field_),
+                  Name::kEmptyHashField);
+  StoreInt32Field(result, offsetof(String, length_), length);
 }
 
 Register MaglevAssembler::FromAnyToRegister(const Input& input,
@@ -168,13 +170,14 @@ void MaglevAssembler::ToBoolean(Register value, CheckType check_type,
   // Undefined is the first root, so it's the smallest possible pointer
   // value, which means we don't have to subtract it for the range check.
   ReadOnlyRoots roots(isolate_);
-  static_assert(StaticReadOnlyRoot::kUndefinedValue + Undefined::kSize ==
+  static_assert(StaticReadOnlyRoot::kUndefinedValue + sizeof(Undefined) ==
                 StaticReadOnlyRoot::kNullValue);
-  static_assert(StaticReadOnlyRoot::kNullValue + Null::kSize ==
+  static_assert(StaticReadOnlyRoot::kNullValue + sizeof(Null) ==
                 StaticReadOnlyRoot::kempty_string);
-  static_assert(StaticReadOnlyRoot::kempty_string + String::kHeaderSize ==
+  static_assert(StaticReadOnlyRoot::kempty_string +
+                    SeqOneByteString::SizeFor(0) ==
                 StaticReadOnlyRoot::kFalseValue);
-  static_assert(StaticReadOnlyRoot::kFalseValue + False::kSize ==
+  static_assert(StaticReadOnlyRoot::kFalseValue + sizeof(False) ==
                 StaticReadOnlyRoot::kTrueValue);
   CompareInt32AndJumpIf(value, StaticReadOnlyRoot::kTrueValue,
                         kUnsignedLessThan, *is_false);
@@ -268,7 +271,12 @@ void MaglevAssembler::MaterialiseValueNode(Register dst, ValueNode* value) {
     case Opcode::kFloat64Constant: {
       double double_value =
           value->Cast<Float64Constant>()->value().get_scalar();
-      MoveHeapNumber(dst, double_value);
+      int smi_value;
+      if (DoubleToSmiInteger(double_value, &smi_value)) {
+        Move(dst, Smi::FromInt(smi_value));
+      } else {
+        MoveHeapNumber(dst, double_value);
+      }
       return;
     }
     default:
@@ -325,7 +333,7 @@ void MaglevAssembler::MaterialiseValueNode(Register dst, ValueNode* value) {
       bind(&done);
       break;
     }
-    case ValueRepresentation::kWord64:
+    case ValueRepresentation::kIntPtr:
     case ValueRepresentation::kTagged:
       UNREACHABLE();
   }

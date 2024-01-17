@@ -410,11 +410,10 @@ Handle<String> JSNativeContextSpecialization::Concatenate(
     created_strings_.insert(flat);
     DisallowGarbageCollection no_gc;
     String::WriteToFlat(*left, flat->GetChars(no_gc, access_guard), 0,
-                        left->length(), GetPtrComprCageBase(*left),
-                        access_guard);
-    String::WriteToFlat(
-        *right, flat->GetChars(no_gc, access_guard) + left->length(), 0,
-        right->length(), GetPtrComprCageBase(*right), access_guard);
+                        left->length(), access_guard);
+    String::WriteToFlat(*right,
+                        flat->GetChars(no_gc, access_guard) + left->length(), 0,
+                        right->length(), access_guard);
     return flat;
   } else {
     // One (or both) of {left} and {right} is 2-byte ==> the result will be
@@ -428,11 +427,10 @@ Handle<String> JSNativeContextSpecialization::Concatenate(
     created_strings_.insert(flat);
     DisallowGarbageCollection no_gc;
     String::WriteToFlat(*left, flat->GetChars(no_gc, access_guard), 0,
-                        left->length(), GetPtrComprCageBase(*left),
-                        access_guard);
-    String::WriteToFlat(
-        *right, flat->GetChars(no_gc, access_guard) + left->length(), 0,
-        right->length(), GetPtrComprCageBase(*right), access_guard);
+                        left->length(), access_guard);
+    String::WriteToFlat(*right,
+                        flat->GetChars(no_gc, access_guard) + left->length(), 0,
+                        right->length(), access_guard);
     return flat;
   }
 }
@@ -759,7 +757,8 @@ Reduction JSNativeContextSpecialization::ReduceJSInstanceOf(Node* node) {
     OptionalJSObjectRef holder = access_info.holder();
     bool found_on_proto = holder.has_value();
     JSObjectRef holder_ref = found_on_proto ? holder.value() : receiver.value();
-    OptionalObjectRef constant = holder_ref.GetOwnFastDataProperty(
+    if (access_info.field_representation().IsDouble()) return NoChange();
+    OptionalObjectRef constant = holder_ref.GetOwnFastConstantDataProperty(
         broker(), access_info.field_representation(), access_info.field_index(),
         dependencies());
     if (!constant.has_value() || !constant->IsHeapObject() ||

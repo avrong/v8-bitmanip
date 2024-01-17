@@ -89,6 +89,10 @@ void CallOp::PrintOptions(std::ostream& os) const {
   os << '[' << *descriptor->descriptor << ']';
 }
 
+void TailCallOp::PrintOptions(std::ostream& os) const {
+  os << '[' << *descriptor->descriptor << ']';
+}
+
 bool ValidOpInputRep(
     const Graph& graph, OpIndex input,
     std::initializer_list<RegisterRepresentation> expected_reps,
@@ -297,6 +301,8 @@ std::ostream& operator<<(std::ostream& os, ShiftOp::Kind kind) {
 
 std::ostream& operator<<(std::ostream& os, ComparisonOp::Kind kind) {
   switch (kind) {
+    case ComparisonOp::Kind::kEqual:
+      return os << "Equal";
     case ComparisonOp::Kind::kSignedLessThan:
       return os << "SignedLessThan";
     case ComparisonOp::Kind::kSignedLessThanOrEqual:
@@ -362,6 +368,17 @@ std::ostream& operator<<(std::ostream& os, TryChangeOp::Kind kind) {
       return os << "SignedFloatTruncateOverflowUndefined";
     case TryChangeOp::Kind::kUnsignedFloatTruncateOverflowUndefined:
       return os << "UnsignedFloatTruncateOverflowUndefined";
+  }
+}
+
+std::ostream& operator<<(std::ostream& os, TaggedBitcastOp::Kind kind) {
+  switch (kind) {
+    case TaggedBitcastOp::Kind::kSmi:
+      return os << "Smi";
+    case TaggedBitcastOp::Kind::kHeapObject:
+      return os << "HeapObject";
+    case TaggedBitcastOp::Kind::kAny:
+      return os << "Any";
   }
 }
 
@@ -509,6 +526,17 @@ void ParameterOp::PrintOptions(std::ostream& os) const {
   os << "]";
 }
 
+MachineType LoadOp::machine_type() const {
+  if (result_rep == RegisterRepresentation::Compressed()) {
+    if (loaded_rep == MemoryRepresentation::AnyTagged()) {
+      return MachineType::AnyCompressed();
+    } else if (loaded_rep == MemoryRepresentation::TaggedPointer()) {
+      return MachineType::CompressedPointer();
+    }
+  }
+  return loaded_rep.ToMachineType();
+}
+
 void LoadOp::PrintInputs(std::ostream& os,
                          const std::string& op_index_prefix) const {
   os << " *(" << op_index_prefix << base().id();
@@ -529,6 +557,7 @@ void LoadOp::PrintOptions(std::ostream& os) const {
   if (kind.maybe_unaligned) os << ", unaligned";
   if (kind.with_trap_handler) os << ", protected";
   os << ", " << loaded_rep;
+  os << ", " << result_rep;
   if (element_size_log2 != 0)
     os << ", element size: 2^" << int{element_size_log2};
   if (offset != 0) os << ", offset: " << offset;
@@ -1214,6 +1243,8 @@ std::ostream& operator<<(std::ostream& os, BigIntBinopOp::Kind kind) {
 
 std::ostream& operator<<(std::ostream& os, BigIntComparisonOp::Kind kind) {
   switch (kind) {
+    case BigIntComparisonOp::Kind::kEqual:
+      return os << "Equal";
     case BigIntComparisonOp::Kind::kLessThan:
       return os << "LessThan";
     case BigIntComparisonOp::Kind::kLessThanOrEqual:
@@ -1250,6 +1281,8 @@ std::ostream& operator<<(std::ostream& os, StringToCaseIntlOp::Kind kind) {
 
 std::ostream& operator<<(std::ostream& os, StringComparisonOp::Kind kind) {
   switch (kind) {
+    case StringComparisonOp::Kind::kEqual:
+      return os << "Equal";
     case StringComparisonOp::Kind::kLessThan:
       return os << "LessThan";
     case StringComparisonOp::Kind::kLessThanOrEqual:
@@ -1299,6 +1332,14 @@ std::ostream& operator<<(std::ostream& os, FindOrderedHashEntryOp::Kind kind) {
       return os << "FindOrderedHashMapEntryForInt32Key";
     case FindOrderedHashEntryOp::Kind::kFindOrderedHashSetEntry:
       return os << "FindOrderedHashSetEntry";
+  }
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         SpeculativeNumberBinopOp::Kind kind) {
+  switch (kind) {
+    case SpeculativeNumberBinopOp::Kind::kSafeIntegerAdd:
+      return os << "SafeIntegerAdd";
   }
 }
 
@@ -1539,6 +1580,12 @@ void Simd128ShuffleOp::PrintOptions(std::ostream& os) const {
 
 void WasmAllocateArrayOp::PrintOptions(std::ostream& os) const {
   os << '[' << array_type->element_type() << "]";
+}
+
+void ArrayGetOp::PrintOptions(std::ostream& os) const {
+  os << "[" << (is_signed ? "signed " : "")
+     << (array_type->mutability() ? "" : "immutable ")
+     << array_type->element_type() << "]";
 }
 
 #endif  // V8_ENABLE_WEBASSEBMLY
