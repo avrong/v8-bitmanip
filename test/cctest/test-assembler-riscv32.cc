@@ -65,6 +65,16 @@ using F5 = void*(void* p0, void* p1, int p2, int p3, int p4);
     CHECK_EQ(expected_res, res);                                       \
   }
 
+#define UTEST_R2_FORM_WITH_RES_B(instr_name, type, rs1_val, rs2_val,   \
+                               expected_res)                           \
+  TEST(RISCV_UTEST_##instr_name) {                                     \
+    i::v8_flags.riscv_bitmanip = true;                                 \
+    CcTest::InitializeVM();                                            \
+    auto fn = [](MacroAssembler& assm) { __ instr_name(a0, a0, a1); }; \
+    auto res = GenAndRunTest<type, type>(rs1_val, rs2_val, fn);        \
+    CHECK_EQ(expected_res, res);                                       \
+  }
+
 #define UTEST_R1_FORM_WITH_RES(instr_name, in_type, out_type, rs1_val, \
                                expected_res)                           \
   TEST(RISCV_UTEST_##instr_name) {                                     \
@@ -364,15 +374,15 @@ UTEST_R2_FORM_WITH_OP(sra, int32_t, -0x12340000, 17, >>)
 
 // RV64B
 #ifdef CAN_USE_ZBA_INSTRUCTIONS
-UTEST_R2_FORM_WITH_RES(sh1add, int32_t, LARGE_UINT_UNDER_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(sh1add, int32_t, LARGE_UINT_UNDER_32_BIT,
                        LARGE_INT_UNDER_32_BIT,
                        int32_t((LARGE_INT_UNDER_32_BIT) +
                                (LARGE_UINT_UNDER_32_BIT << 1)))
-UTEST_R2_FORM_WITH_RES(sh2add, int32_t, LARGE_UINT_UNDER_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(sh2add, int32_t, LARGE_UINT_UNDER_32_BIT,
                        LARGE_INT_UNDER_32_BIT,
                        int32_t((LARGE_INT_UNDER_32_BIT) +
                                (LARGE_UINT_UNDER_32_BIT << 2)))
-UTEST_R2_FORM_WITH_RES(sh3add, int32_t, LARGE_UINT_UNDER_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(sh3add, int32_t, LARGE_UINT_UNDER_32_BIT,
                        LARGE_INT_UNDER_32_BIT,
                        int32_t((LARGE_INT_UNDER_32_BIT) +
                                (LARGE_UINT_UNDER_32_BIT << 3)))

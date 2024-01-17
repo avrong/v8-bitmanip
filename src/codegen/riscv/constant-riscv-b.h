@@ -10,6 +10,12 @@ namespace v8 {
 namespace internal {
 
 // Zba
+constexpr Opcode RO_SH1ADD =
+    OP | (0b010 << kFunct3Shift) | (0b0010000 << kFunct7Shift);
+constexpr Opcode RO_SH2ADD =
+    OP | (0b100 << kFunct3Shift) | (0b0010000 << kFunct7Shift);
+constexpr Opcode RO_SH3ADD =
+    OP | (0b110 << kFunct3Shift) | (0b0010000 << kFunct7Shift);
 #ifdef V8_TARGET_ARCH_RISCV64
 constexpr Opcode RO_ADDUW =
     OP_32 | (0b000 << kFunct3Shift) | (0b0000100 << kFunct7Shift);
@@ -23,12 +29,6 @@ constexpr Opcode RO_SLLIUW =
     OP_IMM_32 | (0b001 << kFunct3Shift) | (0b000010 << kFunct6Shift);
 #endif
 
-constexpr Opcode RO_SH1ADD =
-    OP | (0b010 << kFunct3Shift) | (0b0010000 << kFunct7Shift);
-constexpr Opcode RO_SH2ADD =
-    OP | (0b100 << kFunct3Shift) | (0b0010000 << kFunct7Shift);
-constexpr Opcode RO_SH3ADD =
-    OP | (0b110 << kFunct3Shift) | (0b0010000 << kFunct7Shift);
 
 // Zbb
 constexpr Opcode RO_ANDN =
@@ -105,9 +105,6 @@ constexpr Opcode RO_BSET =
 constexpr Opcode RO_BSETI =
     OP_IMM | (0b001 << kFunct3Shift) | (0b0010100 << kFunct7Shift);
 
-// Zbb: basic
-
-// Zbb: bitwise rotation
 
 }  // namespace internal
 }  // namespace v8

@@ -67,6 +67,16 @@ using F5 = void*(void* p0, void* p1, int p2, int p3, int p4);
     CHECK_EQ(expected_res, res);                                       \
   }
 
+#define UTEST_R2_FORM_WITH_RES_B(instr_name, type, rs1_val, rs2_val,   \
+                               expected_res)                           \
+  TEST(RISCV_UTEST_##instr_name) {                                     \
+    i::v8_flags.riscv_bitmanip = true;                                 \
+    CcTest::InitializeVM();                                            \     
+    auto fn = [](MacroAssembler& assm) { __ instr_name(a0, a0, a1); }; \
+    auto res = GenAndRunTest<type, type>(rs1_val, rs2_val, fn);        \
+    CHECK_EQ(expected_res, res);                                       \
+  }
+
 #define UTEST_R1_FORM_WITH_RES(instr_name, in_type, out_type, rs1_val, \
                                expected_res)                           \
   TEST(RISCV_UTEST_##instr_name) {                                     \
@@ -476,36 +486,36 @@ UTEST_AMO_WITH_RES(amomaxu_d, false, false, uint64_t, 0xFBB10A9Cbfb76aa6,
                             (uint64_t)0x284ff922346ad35c))
 // RV64B
 #ifdef CAN_USE_ZBA_INSTRUCTIONS
-UTEST_R2_FORM_WITH_RES(sh1add, int64_t, LARGE_INT_EXCEED_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(sh1add, int64_t, LARGE_INT_EXCEED_32_BIT,
                        LARGE_UINT_EXCEED_32_BIT,
                        ((LARGE_UINT_EXCEED_32_BIT) +
                         (LARGE_INT_EXCEED_32_BIT << 1)))
-UTEST_R2_FORM_WITH_RES(sh2add, int64_t, LARGE_INT_EXCEED_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(sh2add, int64_t, LARGE_INT_EXCEED_32_BIT,
                        LARGE_UINT_EXCEED_32_BIT,
                        ((LARGE_UINT_EXCEED_32_BIT) +
                         (LARGE_INT_EXCEED_32_BIT << 2)))
-UTEST_R2_FORM_WITH_RES(sh3add, int64_t, LARGE_INT_EXCEED_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(sh3add, int64_t, LARGE_INT_EXCEED_32_BIT,
                        LARGE_UINT_EXCEED_32_BIT,
                        ((LARGE_UINT_EXCEED_32_BIT) +
                         (LARGE_INT_EXCEED_32_BIT << 3)))
 
-UTEST_R2_FORM_WITH_RES(sh1adduw, int64_t, 0x13f42, 1,
+UTEST_R2_FORM_WITH_RES_B(sh1adduw, int64_t, 0x13f42, 1,
                        ((1) + (uint32_t(0x13f42) << 1)))
 
-UTEST_R2_FORM_WITH_RES(sh2adduw, int64_t, 0x13f42, LARGE_UINT_EXCEED_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(sh2adduw, int64_t, 0x13f42, LARGE_UINT_EXCEED_32_BIT,
                        int64_t((LARGE_UINT_EXCEED_32_BIT) +
                                (uint32_t(0x13f42) << 2)))
 
-UTEST_R2_FORM_WITH_RES(sh3adduw, int64_t, LARGE_INT_EXCEED_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(sh3adduw, int64_t, LARGE_INT_EXCEED_32_BIT,
                        LARGE_UINT_EXCEED_32_BIT,
                        int64_t((LARGE_UINT_EXCEED_32_BIT) +
                                (uint32_t(LARGE_INT_EXCEED_32_BIT) << 3)))
-UTEST_R2_FORM_WITH_RES(adduw, int64_t, LARGE_INT_EXCEED_32_BIT,
+UTEST_R2_FORM_WITH_RES_B(adduw, int64_t, LARGE_INT_EXCEED_32_BIT,
                        LARGE_UINT_EXCEED_32_BIT,
                        int64_t((LARGE_UINT_EXCEED_32_BIT) +
                                (uint32_t(LARGE_INT_EXCEED_32_BIT))))
 
-UTEST_I_FORM_WITH_RES(slliuw, int64_t, LARGE_INT_EXCEED_32_BIT, 10,
+UTEST_R2_FORM_WITH_RES_B(slliuw, int64_t, LARGE_INT_EXCEED_32_BIT, 10,
                       (int64_t(uint32_t(LARGE_INT_EXCEED_32_BIT))) << 10)
 #endif
 
