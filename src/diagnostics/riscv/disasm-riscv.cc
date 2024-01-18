@@ -2138,9 +2138,15 @@ bool Decoder::DecodeBIType(Instruction* instr) {
   switch (instr->InstructionBits() & kITypeMask) {
     // Zba
     #ifdef V8_TARGET_ARCH_64_BIT
-    case RO_SLLIUW:
-      Format(instr, "slli.uw   'rd, 'rs1, 's32");
-      return true;
+    case OP_SHLW:
+      switch (instr->Funct7FieldRaw() | OP_SHLW) {
+        case RO_SLLIUW: {
+          Format(instr, "slli.uw   'rd, 'rs1, 's32");
+          return true;
+        }
+        default:
+          return false;
+      }
     #endif
 
     // Zbb: basic

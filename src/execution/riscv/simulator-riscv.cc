@@ -5716,10 +5716,15 @@ bool Simulator::DecodeBIType() {
   switch (instr_.InstructionBits() & kITypeMask) {
     // Zba
     #ifdef V8_TARGET_ARCH_RISCV64
-    case RO_SLLIUW: {
-      set_rd(zext32(rs1()) << shamt6());
-      return true;
-    }
+    case OP_SHLW:
+      switch (instr_.Funct7FieldRaw() | OP_SHLW) {
+        case RO_SLLIUW: {
+          set_rd(zext32(rs1()) << shamt6());
+          return true;
+        }
+        default:
+          return false;
+      }
     #endif
 
     // Zbb: basic

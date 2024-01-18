@@ -71,7 +71,7 @@ using F5 = void*(void* p0, void* p1, int p2, int p3, int p4);
                                expected_res)                           \
   TEST(RISCV_UTEST_##instr_name) {                                     \
     i::v8_flags.riscv_bitmanip = true;                                 \
-    CcTest::InitializeVM();                                            \     
+    CcTest::InitializeVM();                                            \
     auto fn = [](MacroAssembler& assm) { __ instr_name(a0, a0, a1); }; \
     auto res = GenAndRunTest<type, type>(rs1_val, rs2_val, fn);        \
     CHECK_EQ(expected_res, res);                                       \
@@ -103,6 +103,16 @@ using F5 = void*(void* p0, void* p1, int p2, int p3, int p4);
     auto fn = [](MacroAssembler& assm) { __ instr_name(a0, a0, imm12); };     \
     auto res = GenAndRunTest<type, type>(rs1_val, fn);                        \
     CHECK_EQ(expected_res, res);                                              \
+  }
+
+#define UTEST_I_FORM_WITH_RES_B(instr_name, type, rs1_val, imm12, expected_res) \
+  TEST(RISCV_UTEST_##instr_name) {                                              \
+    i::v8_flags.riscv_bitmanip = true;                                          \
+    CcTest::InitializeVM();                                                     \
+    CHECK_EQ(is_intn(imm12, 12), true);                                         \
+    auto fn = [](MacroAssembler& assm) { __ instr_name(a0, a0, imm12); };       \
+    auto res = GenAndRunTest<type, type>(rs1_val, fn);                          \
+    CHECK_EQ(expected_res, res);                                                \
   }
 
 #define UTEST_AMO_WITH_RES(instr_name, aq, rl, inout_type, rs1_val, rs2_val,   \
@@ -515,7 +525,7 @@ UTEST_R2_FORM_WITH_RES_B(adduw, int64_t, LARGE_INT_EXCEED_32_BIT,
                        int64_t((LARGE_UINT_EXCEED_32_BIT) +
                                (uint32_t(LARGE_INT_EXCEED_32_BIT))))
 
-UTEST_R2_FORM_WITH_RES_B(slliuw, int64_t, LARGE_INT_EXCEED_32_BIT, 10,
+UTEST_I_FORM_WITH_RES_B(slliuw, int64_t, LARGE_INT_EXCEED_32_BIT, 10,
                       (int64_t(uint32_t(LARGE_INT_EXCEED_32_BIT))) << 10)
 #endif
 
