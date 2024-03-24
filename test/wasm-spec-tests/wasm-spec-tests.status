@@ -71,6 +71,8 @@
   'proposals/memory64/memory64': [FAIL],
   'proposals/memory64/memory': [FAIL],
   'proposals/tail-call/binary': [FAIL],
+  'proposals/exception-handling/binary': [FAIL],
+  'proposals/exception-handling/imports': [FAIL],
 }],  # ALWAYS
 
 ['arch == arm and not simulator_run', {
@@ -196,6 +198,7 @@
   'proposals/js-types/linking': [SKIP],
   'proposals/multi-memory/simd_memory-multi': [SKIP],
   'proposals/tail-call/simd_lane': [SKIP],
+  'proposals/memory64/simd_address': [SKIP],
 }],  # no_simd_hardware == True
 
 ##############################################################################

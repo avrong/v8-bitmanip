@@ -1559,7 +1559,8 @@ void PrepareFunctionData(i::Isolate* isolate,
                          const i::wasm::FunctionSig* sig,
                          const i::wasm::WasmModule* module) {
   // If the data is already populated, return immediately.
-  if (function_data->c_wrapper_code() != *BUILTIN_CODE(isolate, Illegal)) {
+  if (function_data->c_wrapper_code(isolate) !=
+      *BUILTIN_CODE(isolate, Illegal)) {
     return;
   }
   // Compile wrapper code.
@@ -1667,7 +1668,7 @@ i::Handle<i::JSReceiver> GetProperException(
   if (!maybe_string.ToHandle(&string)) {
     // If converting the {maybe_exception} to string threw another exception,
     // just give up and leave {string} as the empty string.
-    isolate->clear_pending_exception();
+    isolate->clear_exception();
   }
   // {NewError} cannot fail when its input is a plain String, so we always
   // get an Error object here.
@@ -1684,7 +1685,7 @@ auto Func::call(const Val args[], Val results[]) const -> own<Trap> {
   v8::Isolate::Scope isolate_scope(store->isolate());
   i::HandleScope handle_scope(isolate);
   i::Tagged<i::Object> raw_function_data =
-      func->v8_object()->shared()->function_data(v8::kAcquireLoad);
+      func->v8_object()->shared()->GetData(isolate);
 
   // WasmCapiFunctions can be called directly.
   if (IsWasmCapiFunctionData(raw_function_data)) {
@@ -1697,26 +1698,27 @@ auto Func::call(const Val args[], Val results[]) const -> own<Trap> {
       i::WasmExportedFunctionData::cast(raw_function_data), isolate);
   i::Handle<i::WasmInstanceObject> instance(function_data->instance(), isolate);
   int function_index = function_data->function_index();
+  const i::wasm::WasmModule* module = instance->module();
   // Caching {sig} would give a ~10% reduction in overhead.
-  const i::wasm::FunctionSig* sig =
-      instance->module()->functions[function_index].sig;
-  PrepareFunctionData(isolate, function_data, sig, instance->module());
-  i::Handle<i::Code> wrapper_code(function_data->c_wrapper_code(), isolate);
+  const i::wasm::FunctionSig* sig = module->functions[function_index].sig;
+  PrepareFunctionData(isolate, function_data, sig, module);
+  i::Handle<i::Code> wrapper_code(function_data->c_wrapper_code(isolate),
+                                  isolate);
   i::Address call_target = function_data->internal()->call_target(isolate);
 
   i::wasm::CWasmArgumentsPacker packer(function_data->packed_args_size());
   PushArgs(sig, args, &packer, store);
 
   i::Handle<i::Object> object_ref = instance;
-  if (function_index <
-      static_cast<int>(instance->module()->num_imported_functions)) {
+  if (function_index < static_cast<int>(module->num_imported_functions)) {
     object_ref = i::handle(
-        instance->imported_function_refs()->get(function_index), isolate);
+        instance->trusted_data(isolate)->imported_function_refs()->get(
+            function_index),
+        isolate);
     if (IsWasmApiFunctionRef(*object_ref)) {
       i::Tagged<i::JSFunction> jsfunc = i::JSFunction::cast(
           i::WasmApiFunctionRef::cast(*object_ref)->callable());
-      i::Tagged<i::Object> data =
-          jsfunc->shared()->function_data(v8::kAcquireLoad);
+      i::Tagged<i::Object> data = jsfunc->shared()->GetData(isolate);
       if (IsWasmCapiFunctionData(data)) {
         return CallWasmCapiFunction(i::WasmCapiFunctionData::cast(data), args,
                                     results);
@@ -1734,9 +1736,9 @@ auto Func::call(const Val args[], Val results[]) const -> own<Trap> {
   i::Execution::CallWasm(isolate, wrapper_code, call_target, object_ref,
                          packer.argv());
 
-  if (isolate->has_pending_exception()) {
-    i::Handle<i::Object> exception(isolate->pending_exception(), isolate);
-    isolate->clear_pending_exception();
+  if (isolate->has_exception()) {
+    i::Handle<i::Object> exception(isolate->exception(), isolate);
+    isolate->clear_exception();
     return implement<Trap>::type::make(store,
                                        GetProperException(isolate, exception));
   }
@@ -1804,8 +1806,8 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
 
   if (trap) {
     isolate->Throw(*impl(trap.get())->v8_object());
-    i::Tagged<i::Object> ex = isolate->pending_exception();
-    isolate->clear_pending_exception();
+    i::Tagged<i::Object> ex = isolate->exception();
+    isolate->clear_exception();
     return ex.ptr();
   }
 
@@ -2227,20 +2229,19 @@ own<Instance> Instance::make(Store* store_abs, const Module* module_abs,
       *trap = implement<Trap>::type::make(
           store, GetProperException(isolate, thrower.Reify()));
       DCHECK(!thrower.error());                   // Reify() called Reset().
-      DCHECK(!isolate->has_pending_exception());  // Hasn't been thrown yet.
+      DCHECK(!isolate->has_exception());          // Hasn't been thrown yet.
       return own<Instance>();
-    } else if (isolate->has_pending_exception()) {
-      i::Handle<i::Object> maybe_exception(isolate->pending_exception(),
-                                           isolate);
+    } else if (isolate->has_exception()) {
+      i::Handle<i::Object> maybe_exception(isolate->exception(), isolate);
       *trap = implement<Trap>::type::make(
           store, GetProperException(isolate, maybe_exception));
-      isolate->clear_pending_exception();
+      isolate->clear_exception();
       return own<Instance>();
     }
   } else if (instance_obj.is_null()) {
     // If no {trap} output is specified, silently swallow all errors.
     thrower.Reset();
-    isolate->clear_pending_exception();
+    isolate->clear_exception();
     return own<Instance>();
   }
   return implement<Instance>::type::make(store, instance_obj.ToHandleChecked());

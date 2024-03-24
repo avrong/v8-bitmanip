@@ -127,6 +127,7 @@ class MergePointInterpreterFrameState;
   V(ExternalConstant)               \
   V(Float64Constant)                \
   V(Int32Constant)                  \
+  V(Uint32Constant)                 \
   V(RootConstant)                   \
   V(SmiConstant)                    \
   V(TaggedIndexConstant)
@@ -184,12 +185,10 @@ class MergePointInterpreterFrameState;
   V(LoadHoleyFixedDoubleArrayElementCheckedNotHole) \
   V(LoadSignedIntDataViewElement)                   \
   V(LoadDoubleDataViewElement)                      \
+  V(LoadTypedArrayLength)                           \
   V(LoadSignedIntTypedArrayElement)                 \
-  V(LoadSignedIntTypedArrayElementNoDeopt)          \
   V(LoadUnsignedIntTypedArrayElement)               \
-  V(LoadUnsignedIntTypedArrayElementNoDeopt)        \
   V(LoadDoubleTypedArrayElement)                    \
-  V(LoadDoubleTypedArrayElementNoDeopt)             \
   V(LoadEnumCacheLength)                            \
   V(LoadGlobal)                                     \
   V(LoadNamedGeneric)                               \
@@ -204,6 +203,7 @@ class MergePointInterpreterFrameState;
   V(DefineKeyedOwnGeneric)                          \
   V(Phi)                                            \
   V(RegisterInput)                                  \
+  V(CheckedSmiSizedInt32)                           \
   V(CheckedSmiTagInt32)                             \
   V(CheckedSmiTagUint32)                            \
   V(UnsafeSmiTag)                                   \
@@ -254,6 +254,7 @@ class MergePointInterpreterFrameState;
   V(ToObject)                                       \
   V(ToString)                                       \
   V(NumberToString)                                 \
+  V(UpdateJSArrayLength)                            \
   CONSTANT_VALUE_NODE_LIST(V)                       \
   INT32_OPERATIONS_NODE_LIST(V)                     \
   FLOAT64_OPERATIONS_NODE_LIST(V)                   \
@@ -275,7 +276,8 @@ class MergePointInterpreterFrameState;
   V(CheckInt32Condition)                    \
   V(CheckFixedArrayNonEmpty)                \
   V(CheckJSDataViewBounds)                  \
-  V(CheckJSTypedArrayBounds)                \
+  V(CheckTypedArrayBounds)                  \
+  V(CheckTypedArrayNotDetached)             \
   V(CheckMaps)                              \
   V(CheckMapsWithMigration)                 \
   V(CheckNumber)                            \
@@ -298,9 +300,7 @@ class MergePointInterpreterFrameState;
   V(StoreFixedDoubleArrayElement)           \
   V(StoreFloat64)                           \
   V(StoreIntTypedArrayElement)              \
-  V(StoreIntTypedArrayElementNoDeopt)       \
   V(StoreDoubleTypedArrayElement)           \
-  V(StoreDoubleTypedArrayElementNoDeopt)    \
   V(StoreSignedIntDataViewElement)          \
   V(StoreDoubleDataViewElement)             \
   V(StoreTaggedFieldNoWriteBarrier)         \
@@ -313,8 +313,8 @@ class MergePointInterpreterFrameState;
   V(ThrowSuperAlreadyCalledIfNotHole)       \
   V(ThrowIfNotCallable)                     \
   V(ThrowIfNotSuperConstructor)             \
+  V(TransitionElementsKind)                 \
   V(TransitionElementsKindOrCheckMap)       \
-  V(UpdateJSArrayLength)                    \
   GAP_MOVE_NODE_LIST(V)                     \
   VALUE_NODE_LIST(V)
 
@@ -338,6 +338,7 @@ class MergePointInterpreterFrameState;
 
 #define UNCONDITIONAL_CONTROL_NODE_LIST(V) \
   V(Jump)                                  \
+  V(CheckpointedJump)                      \
   V(JumpLoop)
 
 #define TERMINAL_CONTROL_NODE_LIST(V) \
@@ -457,7 +458,7 @@ enum class ValueRepresentation : uint8_t {
   kUint32,
   kFloat64,
   kHoleyFloat64,
-  kWord64
+  kIntPtr
 };
 
 inline constexpr bool IsDoubleRepresentation(ValueRepresentation repr) {
@@ -654,7 +655,7 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "Float64";
     case ValueRepresentation::kHoleyFloat64:
       return os << "HoleyFloat64";
-    case ValueRepresentation::kWord64:
+    case ValueRepresentation::kIntPtr:
       return os << "Word64";
   }
 }
@@ -824,10 +825,16 @@ class OpProperties {
   }
   constexpr bool is_any_call() const { return is_call() || is_deferred_call(); }
   constexpr bool can_eager_deopt() const {
-    return kCanEagerDeoptBit::decode(bitfield_);
+    return kAttachedDeoptInfoBits::decode(bitfield_) ==
+           AttachedDeoptInfo::kEager;
   }
   constexpr bool can_lazy_deopt() const {
-    return kCanLazyDeoptBit::decode(bitfield_);
+    return kAttachedDeoptInfoBits::decode(bitfield_) ==
+           AttachedDeoptInfo::kLazy;
+  }
+  constexpr bool is_deopt_checkpoint() const {
+    return kAttachedDeoptInfoBits::decode(bitfield_) ==
+           AttachedDeoptInfo::kCheckpoint;
   }
   constexpr bool can_deopt() const {
     return can_eager_deopt() || can_lazy_deopt();
@@ -875,10 +882,16 @@ class OpProperties {
     return OpProperties(kIsCallBit::encode(true));
   }
   static constexpr OpProperties EagerDeopt() {
-    return OpProperties(kCanEagerDeoptBit::encode(true));
+    return OpProperties(
+        kAttachedDeoptInfoBits::encode(AttachedDeoptInfo::kEager));
   }
   static constexpr OpProperties LazyDeopt() {
-    return OpProperties(kCanLazyDeoptBit::encode(true));
+    return OpProperties(
+        kAttachedDeoptInfoBits::encode(AttachedDeoptInfo::kLazy));
+  }
+  static constexpr OpProperties DeoptCheckpoint() {
+    return OpProperties(
+        kAttachedDeoptInfoBits::encode(AttachedDeoptInfo::kCheckpoint));
   }
   static constexpr OpProperties CanThrow() {
     return OpProperties(kCanThrowBit::encode(true)) | LazyDeopt();
@@ -898,7 +911,7 @@ class OpProperties {
   }
   static constexpr OpProperties ExternalReference() {
     return OpProperties(
-        kValueRepresentationBits::encode(ValueRepresentation::kWord64));
+        kValueRepresentationBits::encode(ValueRepresentation::kIntPtr));
   }
   static constexpr OpProperties Int32() {
     return OpProperties(
@@ -915,6 +928,10 @@ class OpProperties {
   static constexpr OpProperties HoleyFloat64() {
     return OpProperties(
         kValueRepresentationBits::encode(ValueRepresentation::kHoleyFloat64));
+  }
+  static constexpr OpProperties IntPtr() {
+    return OpProperties(
+        kValueRepresentationBits::encode(ValueRepresentation::kIntPtr));
   }
   static constexpr OpProperties ConversionNode() {
     return OpProperties(kIsConversionBit::encode(true));
@@ -949,15 +966,15 @@ class OpProperties {
   }
 
   OpProperties WithoutDeopt() const {
-    return OpProperties(kCanLazyDeoptBit::update(
-        kCanEagerDeoptBit::update(bitfield_, false), false));
+    return OpProperties(
+        kAttachedDeoptInfoBits::update(bitfield_, AttachedDeoptInfo::kNone));
   }
 
  private:
+  enum class AttachedDeoptInfo { kNone, kEager, kLazy, kCheckpoint };
   using kIsCallBit = base::BitField<bool, 0, 1>;
-  using kCanEagerDeoptBit = kIsCallBit::Next<bool, 1>;
-  using kCanLazyDeoptBit = kCanEagerDeoptBit::Next<bool, 1>;
-  using kCanThrowBit = kCanLazyDeoptBit::Next<bool, 1>;
+  using kAttachedDeoptInfoBits = kIsCallBit::Next<AttachedDeoptInfo, 2>;
+  using kCanThrowBit = kAttachedDeoptInfoBits::Next<bool, 1>;
   using kCanReadBit = kCanThrowBit::Next<bool, 1>;
   using kCanWriteBit = kCanReadBit::Next<bool, 1>;
   using kCanAllocate = kCanWriteBit::Next<bool, 1>;
@@ -1118,6 +1135,9 @@ class DeoptFrame {
 
   DeoptFrame(FrameData&& data, DeoptFrame* parent)
       : data_(std::move(data)), parent_(parent) {}
+
+  DeoptFrame(const FrameData& data, DeoptFrame* parent)
+      : data_(data), parent_(parent) {}
 
   FrameType type() const { return data_.tag(); }
   DeoptFrame* parent() { return parent_; }
@@ -1667,7 +1687,8 @@ class NodeBase : public ZoneObject {
   void Print() const;
 
   EagerDeoptInfo* eager_deopt_info() {
-    DCHECK(properties().can_eager_deopt());
+    DCHECK(properties().can_eager_deopt() ||
+           properties().is_deopt_checkpoint());
     DCHECK(!properties().can_lazy_deopt());
     return reinterpret_cast<EagerDeoptInfo*>(deopt_info_address());
   }
@@ -1715,7 +1736,8 @@ class NodeBase : public ZoneObject {
   void SetEagerDeoptInfo(Zone* zone, DeoptFrame deopt_frame,
                          compiler::FeedbackSource feedback_to_update =
                              compiler::FeedbackSource()) {
-    DCHECK(properties().can_eager_deopt());
+    DCHECK(properties().can_eager_deopt() ||
+           properties().is_deopt_checkpoint());
     new (eager_deopt_info())
         EagerDeoptInfo(zone, deopt_frame, feedback_to_update);
   }
@@ -1775,11 +1797,12 @@ class NodeBase : public ZoneObject {
   // For nodes that don't have data past the input, allow trimming the input
   // count. This is used by Phis to reduce inputs when merging in dead control
   // flow.
-  void reduce_input_count() {
+  void reduce_input_count(int num = 1) {
     DCHECK_EQ(opcode(), Opcode::kPhi);
+    DCHECK_GE(input_count(), num);
     DCHECK(!properties().can_lazy_deopt());
     DCHECK(!properties().can_eager_deopt());
-    bitfield_ = InputCountField::update(bitfield_, input_count() - 1);
+    bitfield_ = InputCountField::update(bitfield_, input_count() - num);
   }
 
   // Specify that there need to be a certain number of registers free (i.e.
@@ -1854,7 +1877,9 @@ class NodeBase : public ZoneObject {
 
   static constexpr size_t EagerDeoptInfoSize(OpProperties properties) {
     return RoundUp<alignof(Input)>(
-        properties.can_eager_deopt() ? sizeof(EagerDeoptInfo) : 0);
+        (properties.can_eager_deopt() || properties.is_deopt_checkpoint())
+            ? sizeof(EagerDeoptInfo)
+            : 0);
   }
 
   static constexpr size_t LazyDeoptInfoSize(OpProperties properties) {
@@ -2125,8 +2150,8 @@ class ValueNode : public Node {
       case ValueRepresentation::kInt32:
       case ValueRepresentation::kUint32:
         return MachineRepresentation::kWord32;
-      case ValueRepresentation::kWord64:
-        return MachineRepresentation::kWord64;
+      case ValueRepresentation::kIntPtr:
+        return MachineType::PointerRepresentation();
       case ValueRepresentation::kFloat64:
         return MachineRepresentation::kFloat64;
       case ValueRepresentation::kHoleyFloat64:
@@ -2959,6 +2984,30 @@ class CheckedSmiTagInt32 : public FixedInputValueNodeT<1, CheckedSmiTagInt32> {
   void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
+// This is a check disguised as a conversion node so we can use it to override
+// untagging conversions.
+// TODO(olivf): Support overriding bigger with smaller instruction so we can use
+// CheckInt32IsSmi instead.
+class CheckedSmiSizedInt32
+    : public FixedInputValueNodeT<1, CheckedSmiSizedInt32> {
+  using Base = FixedInputValueNodeT<1, CheckedSmiSizedInt32>;
+
+ public:
+  explicit CheckedSmiSizedInt32(uint64_t bitfield) : Base(bitfield) {}
+
+  static constexpr OpProperties kProperties = OpProperties::EagerDeopt() |
+                                              OpProperties::Int32() |
+                                              OpProperties::ConversionNode();
+  static constexpr
+      typename Base::InputTypes kInputTypes{ValueRepresentation::kInt32};
+
+  Input& input() { return Node::input(0); }
+
+  void SetValueLocationConstraints();
+  void GenerateCode(MaglevAssembler*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
+};
+
 class CheckedSmiTagUint32
     : public FixedInputValueNodeT<1, CheckedSmiTagUint32> {
   using Base = FixedInputValueNodeT<1, CheckedSmiTagUint32>;
@@ -3075,6 +3124,32 @@ class Int32Constant : public FixedInputValueNodeT<0, Int32Constant> {
 
  private:
   const int32_t value_;
+};
+
+class Uint32Constant : public FixedInputValueNodeT<0, Uint32Constant> {
+  using Base = FixedInputValueNodeT<0, Uint32Constant>;
+
+ public:
+  using OutputRegister = Register;
+
+  explicit Uint32Constant(uint64_t bitfield, uint32_t value)
+      : Base(bitfield), value_(value) {}
+
+  static constexpr OpProperties kProperties = OpProperties::Uint32();
+
+  uint32_t value() const { return value_; }
+
+  bool ToBoolean(LocalIsolate* local_isolate) const { return value_ != 0; }
+
+  void SetValueLocationConstraints();
+  void GenerateCode(MaglevAssembler*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
+
+  void DoLoadToRegister(MaglevAssembler*, OutputRegister);
+  Handle<Object> DoReify(LocalIsolate* isolate) const;
+
+ private:
+  const uint32_t value_;
 };
 
 class Float64Constant : public FixedInputValueNodeT<0, Float64Constant> {
@@ -4775,6 +4850,11 @@ class CheckMaps : public FixedInputNodeT<1, CheckMaps> {
   explicit CheckMaps(uint64_t bitfield, const compiler::ZoneRefSet<Map>& maps,
                      CheckType check_type)
       : Base(CheckTypeBitField::update(bitfield, check_type)), maps_(maps) {}
+  explicit CheckMaps(uint64_t bitfield,
+                     base::Vector<const compiler::MapRef> maps,
+                     CheckType check_type, Zone* zone)
+      : Base(CheckTypeBitField::update(bitfield, check_type)),
+        maps_(maps.begin(), maps.end(), zone) {}
 
   static constexpr OpProperties kProperties = OpProperties::EagerDeopt();
   static constexpr
@@ -5161,22 +5241,19 @@ class CheckJSDataViewBounds : public FixedInputNodeT<2, CheckJSDataViewBounds> {
   ExternalArrayType element_type_;
 };
 
-class CheckJSTypedArrayBounds
-    : public FixedInputNodeT<2, CheckJSTypedArrayBounds> {
-  using Base = FixedInputNodeT<2, CheckJSTypedArrayBounds>;
+class LoadTypedArrayLength
+    : public FixedInputValueNodeT<1, LoadTypedArrayLength> {
+  using Base = FixedInputValueNodeT<1, LoadTypedArrayLength>;
 
  public:
-  explicit CheckJSTypedArrayBounds(uint64_t bitfield,
-                                   ElementsKind elements_kind)
+  explicit LoadTypedArrayLength(uint64_t bitfield, ElementsKind elements_kind)
       : Base(bitfield), elements_kind_(elements_kind) {}
-  static constexpr OpProperties kProperties = OpProperties::EagerDeopt();
-  static constexpr typename Base::InputTypes kInputTypes{
-      ValueRepresentation::kTagged, ValueRepresentation::kUint32};
+  static constexpr OpProperties kProperties = OpProperties::IntPtr();
+  static constexpr
+      typename Base::InputTypes kInputTypes{ValueRepresentation::kTagged};
 
   static constexpr int kReceiverIndex = 0;
-  static constexpr int kIndexIndex = 1;
   Input& receiver_input() { return input(kReceiverIndex); }
-  Input& index_input() { return input(kIndexIndex); }
 
   void SetValueLocationConstraints();
   void GenerateCode(MaglevAssembler*, const ProcessingState&);
@@ -5184,6 +5261,43 @@ class CheckJSTypedArrayBounds
 
  private:
   ElementsKind elements_kind_;
+};
+
+class CheckTypedArrayNotDetached
+    : public FixedInputNodeT<1, CheckTypedArrayNotDetached> {
+  using Base = FixedInputNodeT<1, CheckTypedArrayNotDetached>;
+
+ public:
+  explicit CheckTypedArrayNotDetached(uint64_t bitfield) : Base(bitfield) {}
+  static constexpr OpProperties kProperties = OpProperties::EagerDeopt();
+  static constexpr
+      typename Base::InputTypes kInputTypes{ValueRepresentation::kTagged};
+
+  static constexpr int kObjectIndex = 0;
+  Input& object_input() { return input(kObjectIndex); }
+
+  void SetValueLocationConstraints();
+  void GenerateCode(MaglevAssembler*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
+};
+
+class CheckTypedArrayBounds : public FixedInputNodeT<2, CheckTypedArrayBounds> {
+  using Base = FixedInputNodeT<2, CheckTypedArrayBounds>;
+
+ public:
+  explicit CheckTypedArrayBounds(uint64_t bitfield) : Base(bitfield) {}
+  static constexpr OpProperties kProperties = OpProperties::EagerDeopt();
+  static constexpr typename Base::InputTypes kInputTypes{
+      ValueRepresentation::kUint32, ValueRepresentation::kIntPtr};
+
+  static constexpr int kIndexIndex = 0;
+  static constexpr int kLengthIndex = 1;
+  Input& index_input() { return input(kIndexIndex); }
+  Input& length_input() { return input(kLengthIndex); }
+
+  void SetValueLocationConstraints();
+  void GenerateCode(MaglevAssembler*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class CheckInt32Condition : public FixedInputNodeT<2, CheckInt32Condition> {
@@ -5434,6 +5548,7 @@ class PolymorphicAccessInfo {
   enum Kind {
     kNotFound,
     kConstant,
+    kConstantDouble,
     kDataLoad,
     kModuleExport,
     kStringLength,
@@ -5447,6 +5562,10 @@ class PolymorphicAccessInfo {
       const ZoneVector<compiler::MapRef>& maps, compiler::ObjectRef constant) {
     return PolymorphicAccessInfo(kConstant, maps, Representation::Tagged(),
                                  constant);
+  }
+  static PolymorphicAccessInfo ConstantDouble(
+      const ZoneVector<compiler::MapRef>& maps, double constant) {
+    return PolymorphicAccessInfo(kConstantDouble, maps, constant);
   }
   static PolymorphicAccessInfo DataLoad(
       const ZoneVector<compiler::MapRef>& maps, Representation representation,
@@ -5471,6 +5590,11 @@ class PolymorphicAccessInfo {
   Handle<Object> constant() const {
     DCHECK_EQ(kind_, kConstant);
     return constant_.object();
+  }
+
+  double constant_double() const {
+    DCHECK_EQ(kind_, kConstantDouble);
+    return constant_double_;
   }
 
   Handle<Cell> cell() const {
@@ -5509,6 +5633,15 @@ class PolymorphicAccessInfo {
   }
 
   PolymorphicAccessInfo(Kind kind, const ZoneVector<compiler::MapRef>& maps,
+                        double constant)
+      : kind_(kind),
+        maps_(maps),
+        representation_(Representation::Double()),
+        constant_double_(constant) {
+    DCHECK_EQ(kind, kConstantDouble);
+  }
+
+  PolymorphicAccessInfo(Kind kind, const ZoneVector<compiler::MapRef>& maps,
                         Representation representation,
                         compiler::OptionalJSObjectRef holder,
                         FieldIndex field_index)
@@ -5525,6 +5658,7 @@ class PolymorphicAccessInfo {
   const Representation representation_;
   union {
     const compiler::ObjectRef constant_;
+    const double constant_double_;
     struct {
       const compiler::OptionalJSObjectRef holder_;
       const FieldIndex field_index_;
@@ -6014,31 +6148,14 @@ class LoadDoubleDataViewElement
     ElementsKind elements_kind_;                                       \
   };
 
-// Nodes that can deopt are larger, since they contain the DeoptInfo. Thus, to
-// have better performance, we split the LoadxxxTypedArrayElement nodes in two:
-// those who can deopt and those who can't. Deoptimization in a
-// LoadxxxTypedArrayElement node is always because of a detached array buffer.
-// The NoDeopt versions of the nodes rely on the ArrayBufferDetachingProtector,
-// while the deopting versions have a runtime check that triggers a deopt if the
-// buffer is detached.
-LOAD_TYPED_ARRAY(LoadSignedIntTypedArrayElement,
-                 OpProperties::EagerDeopt() | OpProperties::Int32(),
-                 INT8_ELEMENTS, INT16_ELEMENTS, INT32_ELEMENTS)
-LOAD_TYPED_ARRAY(LoadSignedIntTypedArrayElementNoDeopt, OpProperties::Int32(),
+LOAD_TYPED_ARRAY(LoadSignedIntTypedArrayElement, OpProperties::Int32(),
                  INT8_ELEMENTS, INT16_ELEMENTS, INT32_ELEMENTS)
 
-LOAD_TYPED_ARRAY(LoadUnsignedIntTypedArrayElement,
-                 OpProperties::EagerDeopt() | OpProperties::Uint32(),
+LOAD_TYPED_ARRAY(LoadUnsignedIntTypedArrayElement, OpProperties::Uint32(),
                  UINT8_ELEMENTS, UINT8_CLAMPED_ELEMENTS, UINT16_ELEMENTS,
                  UINT16_ELEMENTS, UINT32_ELEMENTS)
-LOAD_TYPED_ARRAY(LoadUnsignedIntTypedArrayElementNoDeopt,
-                 OpProperties::Uint32(), UINT8_ELEMENTS, UINT8_CLAMPED_ELEMENTS,
-                 UINT16_ELEMENTS, UINT16_ELEMENTS, UINT32_ELEMENTS)
 
-LOAD_TYPED_ARRAY(LoadDoubleTypedArrayElement,
-                 OpProperties::EagerDeopt() | OpProperties::Float64(),
-                 FLOAT32_ELEMENTS, FLOAT64_ELEMENTS)
-LOAD_TYPED_ARRAY(LoadDoubleTypedArrayElementNoDeopt, OpProperties::Float64(),
+LOAD_TYPED_ARRAY(LoadDoubleTypedArrayElement, OpProperties::Float64(),
                  FLOAT32_ELEMENTS, FLOAT64_ELEMENTS)
 
 #undef LOAD_TYPED_ARRAY
@@ -6073,28 +6190,11 @@ LOAD_TYPED_ARRAY(LoadDoubleTypedArrayElementNoDeopt, OpProperties::Float64(),
     ElementsKind elements_kind_;                                           \
   };
 
-// Nodes that can deopt are larger, since they contain the DeoptInfo. Thus, to
-// have better performance, we split the StorexxxTypedArrayElement nodes in two:
-// those who can deopt and those who can't. Deoptimization in a
-// StorexxxTypedArrayElement node is always because of a detached array buffer.
-// The NoDeopt versions of the nodes rely on the ArrayBufferDetachingProtector,
-// while the deopting versions have a runtime check that triggers a deopt if the
-// buffer is detached.
-STORE_TYPED_ARRAY(StoreIntTypedArrayElement,
-                  OpProperties::EagerDeopt() | OpProperties::CanWrite(),
+STORE_TYPED_ARRAY(StoreIntTypedArrayElement, OpProperties::CanWrite(),
                   ValueRepresentation::kInt32, INT8_ELEMENTS, INT16_ELEMENTS,
                   INT32_ELEMENTS, UINT8_ELEMENTS, UINT8_CLAMPED_ELEMENTS,
                   UINT16_ELEMENTS, UINT16_ELEMENTS, UINT32_ELEMENTS)
-STORE_TYPED_ARRAY(StoreIntTypedArrayElementNoDeopt, OpProperties::CanWrite(),
-                  ValueRepresentation::kInt32, INT8_ELEMENTS, INT16_ELEMENTS,
-                  INT32_ELEMENTS, UINT8_ELEMENTS, UINT8_CLAMPED_ELEMENTS,
-                  UINT16_ELEMENTS, UINT16_ELEMENTS, UINT32_ELEMENTS)
-
-STORE_TYPED_ARRAY(StoreDoubleTypedArrayElement,
-                  OpProperties::EagerDeopt() | OpProperties::CanWrite(),
-                  ValueRepresentation::kHoleyFloat64, FLOAT32_ELEMENTS,
-                  FLOAT64_ELEMENTS)
-STORE_TYPED_ARRAY(StoreDoubleTypedArrayElementNoDeopt, OpProperties::CanWrite(),
+STORE_TYPED_ARRAY(StoreDoubleTypedArrayElement, OpProperties::CanWrite(),
                   ValueRepresentation::kHoleyFloat64, FLOAT32_ELEMENTS,
                   FLOAT64_ELEMENTS)
 #undef STORE_TYPED_ARRAY
@@ -6391,23 +6491,28 @@ class StoreGlobal : public FixedInputValueNodeT<2, StoreGlobal> {
   const compiler::FeedbackSource feedback_;
 };
 
-class UpdateJSArrayLength : public FixedInputNodeT<3, UpdateJSArrayLength> {
-  using Base = FixedInputNodeT<3, UpdateJSArrayLength>;
+class UpdateJSArrayLength
+    : public FixedInputValueNodeT<3, UpdateJSArrayLength> {
+  using Base = FixedInputValueNodeT<3, UpdateJSArrayLength>;
 
  public:
   explicit UpdateJSArrayLength(uint64_t bitfield) : Base(bitfield) {}
 
   static constexpr OpProperties kProperties = OpProperties::CanWrite();
   static constexpr typename Base::InputTypes kInputTypes{
-      ValueRepresentation::kTagged, ValueRepresentation::kInt32,
+      ValueRepresentation::kInt32, ValueRepresentation::kTagged,
       ValueRepresentation::kInt32};
 
-  static constexpr int kObjectIndex = 0;
-  static constexpr int kIndexIndex = 1;
-  static constexpr int kLengthIndex = 2;
+  // TODO(pthier): Use a more natural order once we can define the result
+  // register to be equal to any input register.
+  // The current order avoids any extra moves in the common case where index is
+  // less than length
+  static constexpr int kLengthIndex = 0;
+  static constexpr int kObjectIndex = 1;
+  static constexpr int kIndexIndex = 2;
+  Input& length_input() { return input(kLengthIndex); }
   Input& object_input() { return input(kObjectIndex); }
   Input& index_input() { return input(kIndexIndex); }
-  Input& length_input() { return input(kLengthIndex); }
 
   void SetValueLocationConstraints();
   void GenerateCode(MaglevAssembler*, const ProcessingState&);
@@ -6951,11 +7056,18 @@ class Phi : public ValueNodeT<Phi> {
     key_ = key;
   }
 
+  // Remembers if a use is unsafely untagged. If that happens we must ensure to
+  // stay within the smi range, even when untagging.
+  void SetUseRequires31BitValue();
+  bool uses_require_31_bit_value() { return uses_require_31_bit_value_; }
+
  private:
   Phi** next() { return &next_; }
 
   const interpreter::Register owner_;
-  bool has_key_ = false;  // True if the {key_} field has been initialized.
+  // True if the {key_} field has been initialized.
+  bool has_key_ = false;
+  bool uses_require_31_bit_value_ = false;
   UseRepresentationSet uses_repr_hint_ = {};
   UseRepresentationSet same_loop_uses_repr_hint_ = {};
 
@@ -7940,14 +8052,45 @@ class ThrowIfNotSuperConstructor
   void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
+class TransitionElementsKind
+    : public FixedInputNodeT<1, TransitionElementsKind> {
+  using Base = FixedInputNodeT<1, TransitionElementsKind>;
+
+ public:
+  static constexpr int kObjectIndex = 0;
+
+  explicit TransitionElementsKind(
+      uint64_t bitfield, const ZoneVector<compiler::MapRef>& transition_sources,
+      compiler::MapRef transition_target)
+      : Base(bitfield),
+        transition_sources_(transition_sources),
+        transition_target_(transition_target) {}
+
+  // TODO(leszeks): Special case the case where all transitions are fast.
+  static constexpr OpProperties kProperties =
+      OpProperties::AnySideEffects() | OpProperties::DeferredCall();
+  static constexpr
+      typename Base::InputTypes kInputTypes{ValueRepresentation::kTagged};
+
+  Input& object_input() { return input(kObjectIndex); }
+
+  int MaxCallStackArgs() const;
+  void SetValueLocationConstraints();
+  void GenerateCode(MaglevAssembler*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
+
+ private:
+  ZoneVector<compiler::MapRef> transition_sources_;
+  const compiler::MapRef transition_target_;
+};
+
 class TransitionElementsKindOrCheckMap
     : public FixedInputNodeT<1, TransitionElementsKindOrCheckMap> {
   using Base = FixedInputNodeT<1, TransitionElementsKindOrCheckMap>;
 
  public:
   explicit TransitionElementsKindOrCheckMap(
-      uint64_t bitfield,
-      base::Vector<const compiler::MapRef> transition_sources,
+      uint64_t bitfield, const ZoneVector<compiler::MapRef>& transition_sources,
       compiler::MapRef transition_target, CheckType check_type)
       : Base(CheckTypeBitField::update(bitfield, check_type)),
         transition_sources_(transition_sources),
@@ -7972,7 +8115,7 @@ class TransitionElementsKindOrCheckMap
  private:
   using CheckTypeBitField = NextBitField<CheckType, 1>;
 
-  const base::Vector<const compiler::MapRef> transition_sources_;
+  ZoneVector<compiler::MapRef> transition_sources_;
   const compiler::MapRef transition_target_;
 };
 
@@ -8089,6 +8232,22 @@ class Jump : public UnconditionalControlNodeT<Jump> {
  public:
   Jump(uint64_t bitfield, BasicBlockRef* target_refs)
       : Base(bitfield, target_refs) {}
+
+  void SetValueLocationConstraints();
+  void GenerateCode(MaglevAssembler*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
+};
+
+// TODO(olivf): Unify implementation with Jump.
+class CheckpointedJump : public UnconditionalControlNodeT<CheckpointedJump> {
+  using Base = UnconditionalControlNodeT<CheckpointedJump>;
+
+ public:
+  CheckpointedJump(uint64_t bitfield, BasicBlockRef* target_refs)
+      : Base(bitfield, target_refs) {}
+
+  static constexpr OpProperties kProperties =
+      OpProperties::DeoptCheckpoint() | Base::kProperties;
 
   void SetValueLocationConstraints();
   void GenerateCode(MaglevAssembler*, const ProcessingState&);

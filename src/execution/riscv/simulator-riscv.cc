@@ -2482,7 +2482,7 @@ void Simulator::set_fpu_register_float(int fpureg, Float32 value) {
 
 void Simulator::set_fpu_register_double(int fpureg, double value) {
   DCHECK((fpureg >= 0) && (fpureg < kNumFPURegisters));
-  *base::bit_cast<double*>(&FPUregisters_[fpureg]) = value;
+  FPUregisters_[fpureg] = base::bit_cast<int64_t>(value);
 }
 
 void Simulator::set_fpu_register_double(int fpureg, Float64 value) {
@@ -2537,7 +2537,7 @@ float Simulator::get_fpu_register_float(int fpureg) const {
   if (!is_boxed_float(FPUregisters_[fpureg])) {
     return std::numeric_limits<float>::quiet_NaN();
   }
-  return *base::bit_cast<float*>(const_cast<int64_t*>(&FPUregisters_[fpureg]));
+  return Float32::FromBits(FPUregisters_[fpureg] & 0xFFFF'FFFF).get_scalar();
 }
 
 // Fix NaN boxing error according to
@@ -2549,13 +2549,12 @@ Float32 Simulator::get_fpu_register_Float32(int fpureg,
     std::cout << std::hex << FPUregisters_[fpureg] << std::endl;
     return Float32::FromBits(0x7fc00000);
   }
-  return Float32::FromBits(
-      *base::bit_cast<uint32_t*>(const_cast<int64_t*>(&FPUregisters_[fpureg])));
+  return Float32::FromBits(FPUregisters_[fpureg] & 0xFFFF'FFFF);
 }
 
 double Simulator::get_fpu_register_double(int fpureg) const {
   DCHECK((fpureg >= 0) && (fpureg < kNumFPURegisters));
-  return *base::bit_cast<double*>(&FPUregisters_[fpureg]);
+  return base::bit_cast<double>(FPUregisters_[fpureg]);
 }
 
 Float64 Simulator::get_fpu_register_Float64(int fpureg) const {
@@ -3521,6 +3520,9 @@ void Simulator::DecodeRVRType() {
       set_rd(sext32(rs1() + rs2()));
       break;
     }
+    case RO_ADDUW:
+      set_rd(zext32(rs1()) + rs2());
+      break;
     case RO_SUBW: {
       set_rd(sext32(rs1() - rs2()));
       break;
@@ -3535,6 +3537,18 @@ void Simulator::DecodeRVRType() {
     }
     case RO_SRAW: {
       set_rd(sext32(int32_t(rs1()) >> (rs2() & 0x1F)));
+      break;
+    }
+    case RO_SH1ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 1));
+      break;
+    }
+    case RO_SH2ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 2));
+      break;
+    }
+    case RO_SH3ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 3));
       break;
     }
 #endif /* V8_TARGET_ARCH_RISCV64 */
@@ -3649,6 +3663,26 @@ void Simulator::DecodeRVRType() {
       break;
     }
 #endif /*V8_TARGET_ARCH_RISCV64*/
+    case RO_BCLR: {
+      sreg_t index = rs2() & (xlen - 1);
+      set_rd(rs1() & ~(1l << index));
+      break;
+    }
+    case RO_BEXT: {
+      sreg_t index = rs2() & (xlen - 1);
+      set_rd((rs1() >> index) & 1);
+      break;
+    }
+    case RO_BINV: {
+      sreg_t index = rs2() & (xlen - 1);
+      set_rd(rs1() ^ (1 << index));
+      break;
+    }
+    case RO_BSET: {
+      sreg_t index = rs2() & (xlen - 1);
+      set_rd(rs1() | (1 << index));
+      break;
+    }
       // TODO(riscv): End Add RISCV M extension macro
     default: {
       switch (instr_.BaseOpcode()) {
@@ -4948,18 +4982,67 @@ void Simulator::DecodeRVIType() {
       set_rd(imm12() & rs1());
       break;
     }
-    case RO_SLLI: {
-      require(shamt6() < xlen);
-      set_rd(sext_xlen(rs1() << shamt6()));
+    case OP_SHL: {
+      switch (instr_.Funct6FieldRaw() | OP_SHL) {
+        case RO_SLLI:
+          require(shamt6() < xlen);
+          set_rd(sext_xlen(rs1() << shamt6()));
+          break;
+        case RO_BCLRI: {
+          require(shamt6() < xlen);
+          sreg_t index = shamt6() & (xlen - 1);
+          set_rd(rs1() & ~(1l << index));
+          break;
+        }
+        case RO_BINVI: {
+          require(shamt6() < xlen);
+          sreg_t index = shamt6() & (xlen - 1);
+          set_rd(rs1() ^ (1l << index));
+          break;
+        }
+        case RO_BSETI: {
+          require(shamt6() < xlen);
+          sreg_t index = shamt6() & (xlen - 1);
+          set_rd(rs1() | (1l << index));
+          break;
+        }
+        default:
+          UNSUPPORTED_RISCV();
+      }
       break;
     }
-    case RO_SRLI: {  //  RO_SRAI
-      if (!instr_.IsArithShift()) {
-        require(shamt6() < xlen);
-        set_rd(sext_xlen(zext_xlen(rs1()) >> shamt6()));
-      } else {
-        require(shamt6() < xlen);
-        set_rd(sext_xlen(sext_xlen(rs1()) >> shamt6()));
+    case OP_SHR: {  //  RO_SRAI
+      switch (instr_.Funct6FieldRaw() | OP_SHR) {
+        case RO_SRLI:
+          require(shamt6() < xlen);
+          set_rd(sext_xlen(zext_xlen(rs1()) >> shamt6()));
+          break;
+        case RO_SRAI:
+          require(shamt6() < xlen);
+          set_rd(sext_xlen(sext_xlen(rs1()) >> shamt6()));
+          break;
+        case RO_BEXTI: {
+          require(shamt6() < xlen);
+          sreg_t index = shamt6() & (xlen - 1);
+          set_rd((rs1() >> index) & 1);
+          break;
+        }
+        case RO_REV8: {
+          if (imm12() == RO_REV8_IMM12) {
+            reg_t input = rs1();
+            reg_t output = 0;
+            reg_t j = xlen - 1;
+            for (int i = 0; i < xlen; i += 8) {
+              output |= ((input >> (j - 7)) & 0xff) << i;
+              j -= 8;
+            }
+            set_rd(output);
+            break;
+          }
+          UNSUPPORTED_RISCV();
+        }
+        default:
+          UNSUPPORTED_RISCV();
       }
       break;
     }
@@ -4968,15 +5051,25 @@ void Simulator::DecodeRVIType() {
       set_rd(sext32(rs1() + imm12()));
       break;
     }
-    case RO_SLLIW: {
-      set_rd(sext32(rs1() << shamt5()));
+    case OP_SHLW:
+      switch (instr_.Funct7FieldRaw() | OP_SHLW) {
+        case RO_SLLIW:
+          set_rd(sext32(rs1() << shamt5()));
+          break;
+        default:
+          UNSUPPORTED_RISCV();
+      }
       break;
-    }
-    case RO_SRLIW: {  //  RO_SRAIW
-      if (!instr_.IsArithShift()) {
-        set_rd(sext32(uint32_t(rs1()) >> shamt5()));
-      } else {
-        set_rd(sext32(int32_t(rs1()) >> shamt5()));
+    case OP_SHRW: {  //  RO_SRAI
+      switch (instr_.Funct7FieldRaw() | OP_SHRW) {
+        case RO_SRLIW:
+          set_rd(sext32(uint32_t(rs1()) >> shamt5()));
+          break;
+        case RO_SRAIW:
+          set_rd(sext32(int32_t(rs1()) >> shamt5()));
+          break;
+        default:
+          UNSUPPORTED_RISCV();
       }
       break;
     }
@@ -5467,12 +5560,42 @@ void Simulator::DecodeCBType() {
 // use `return true` instead of `break` in cases
 bool Simulator::DecodeBRType() {
   // Zbb: basic -- Zero-extension
-  if ((instr_.InstructionBits() & (kITypeMask | kImm12Mask)) == RO_ZEXT_H) {
+  if ((instr_.InstructionBits() & (kITypeMask | kImm12Mask)) == RO_ZEXTH) {
     set_rd(zext_xlen(uint16_t(rs1())));
     return true;
   }
   switch (instr_.InstructionBits() & kRTypeMask) {
     // Zba
+    case RO_SH1ADD:{
+      set_rd(rs2() + (rs1() << 1));
+      return true;
+    }
+    case RO_SH2ADD: {
+      set_rd(rs2() + (rs1() << 2));
+      return true;
+    }
+    case RO_SH3ADD: {
+      set_rd(rs2() + (rs1() << 3));
+      return true;
+    }
+    #ifdef V8_TARGET_ARCH_RISCV64
+    case RO_ADDUW: {
+      set_rd(zext32(rs1()) + rs2());
+      return true;
+    }
+    case RO_SH1ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 1));
+      return true;
+    }
+    case RO_SH2ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 2));
+      return true;
+    }
+    case RO_SH3ADDUW: {
+      set_rd(rs2() + (zext32(rs1()) << 3));
+      return true;
+    }
+    #endif
 
     // Zbb: basic
     // Logical with negate
@@ -5516,6 +5639,17 @@ bool Simulator::DecodeBRType() {
 bool Simulator::DecodeBIType() {
   switch (instr_.InstructionBits() & kITypeMask) {
     // Zba
+    #ifdef V8_TARGET_ARCH_RISCV64
+    case OP_SHLW:
+      switch (instr_.Funct7FieldRaw() | OP_SHLW) {
+        case RO_SLLIUW: {
+          set_rd(zext32(rs1()) << shamt6());
+          return true;
+        }
+        default:
+          return false;
+      }
+    #endif
 
     // Zbb: basic
 
@@ -5592,11 +5726,11 @@ bool Simulator::DecodeBIHType() {
     }
 #endif /*V8_TARGET_ARCH_64_BIT*/
     // Sign- and zero-extension
-    case RO_SEXT_B: {
+    case RO_SEXTB: {
       set_rd(sext_xlen(int8_t(rs1())));
       return true;
     }
-    case RO_SEXT_H: {
+    case RO_SEXTH: {
       set_rd(sext_xlen(int16_t(rs1())));
       return true;
     }

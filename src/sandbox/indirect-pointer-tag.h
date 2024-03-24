@@ -23,9 +23,12 @@ namespace internal {
 constexpr int kIndirectPointerTagShift = 48;
 constexpr uint64_t kIndirectPointerTagMask = 0xffff000000000000;
 
-#define INDIRECT_POINTER_TAG_LIST(V)    \
-  V(kCodeIndirectPointerTag, CODE_TYPE) \
-  V(kBytecodeArrayIndirectPointerTag, BYTECODE_ARRAY_TYPE)
+#define INDIRECT_POINTER_TAG_LIST(V)                           \
+  V(kCodeIndirectPointerTag, CODE_TYPE)                        \
+  V(kBytecodeArrayIndirectPointerTag, BYTECODE_ARRAY_TYPE)     \
+  V(kInterpreterDataIndirectPointerTag, INTERPRETER_DATA_TYPE) \
+  IF_WASM(V, kWasmTrustedInstanceDataIndirectPointerTag,       \
+          WASM_TRUSTED_INSTANCE_DATA_TYPE)
 
 #define MAKE_TAG(instance_type) \
   (uint64_t{instance_type} << kIndirectPointerTagShift)
@@ -84,6 +87,17 @@ V8_INLINE constexpr bool IsValidIndirectPointerTag(IndirectPointerTag tag) {
       return false;
   }
 #undef VALID_INDIRECT_POINTER_TAG_CASE
+}
+
+// Migrating objects into trusted space is typically performed in multiple
+// steps, where all references to the object from inside the sandbox are first
+// changed to indirect pointers before actually moving the object out of the
+// sandbox. As we have CHECKs that trusted pointer table entries point outside
+// of the sandbox, we need this helper function to disable that CHECK for
+// objects that are in the process of being migrated into trusted space.
+V8_INLINE constexpr bool IsTrustedSpaceMigrationInProgressForObjectsWithTag(
+    IndirectPointerTag tag) {
+  return tag == kInterpreterDataIndirectPointerTag;
 }
 
 // The null tag is also considered an invalid tag since no indirect pointer

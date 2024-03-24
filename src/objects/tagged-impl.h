@@ -10,6 +10,7 @@
 #include "src/base/macros.h"
 #include "src/common/checks.h"
 #include "src/common/globals.h"
+#include "src/common/ptr-compr.h"
 
 namespace v8 {
 namespace internal {
@@ -213,6 +214,10 @@ class TaggedImpl {
     DCHECK(!HAS_WEAK_HEAP_OBJECT_TAG(ptr_));
     return T::cast(Tagged<Object>(ptr_));
   }
+
+ protected:
+  StorageType* ptr_location() { return &ptr_; }
+  const StorageType* ptr_location() const { return &ptr_; }
 
  private:
   friend class CompressedObjectSlot;

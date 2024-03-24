@@ -496,13 +496,6 @@ void RecordTrapInfoIfNeeded(Zone* zone, CodeGenerator* codegen,
   const MemoryAccessMode access_mode = instr->memory_access_mode();
   if (access_mode == kMemoryAccessProtectedMemOutOfBounds ||
       access_mode == kMemoryAccessProtectedNullDereference) {
-    ReferenceMap* reference_map =
-        codegen->zone()->New<ReferenceMap>(codegen->zone());
-    // The safepoint has to be recorded at the return address of a call. Address
-    // we use as the fake return address in the case of the trap handler is the
-    // fault address (here `pc`) + 1. Therefore the safepoint here has to be
-    // recorded at pc + 1;
-    codegen->RecordSafepoint(reference_map, pc + 1);
     codegen->RecordProtectedInstruction(pc);
   }
 }
@@ -1510,7 +1503,8 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       AssembleArchTableSwitch(instr);
       break;
     case kArchComment:
-      __ RecordComment(reinterpret_cast<const char*>(i.InputInt64(0)));
+      __ RecordComment(reinterpret_cast<const char*>(i.InputInt64(0)),
+                       SourceLocation());
       break;
     case kArchAbortCSADcheck:
       DCHECK(i.InputRegister(0) == rdx);
@@ -1518,8 +1512,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
         // We don't actually want to generate a pile of code for this, so just
         // claim there is a stack frame, without generating one.
         FrameScope scope(masm(), StackFrame::NO_FRAME_TYPE);
-        __ Call(BUILTIN_CODE(isolate(), AbortCSADcheck),
-                RelocInfo::CODE_TARGET);
+        __ CallBuiltin(Builtin::kAbortCSADcheck);
       }
       __ int3();
       unwinding_info_writer_.MarkBlockWillExit();
@@ -1545,6 +1538,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
     case kArchFramePointer:
       __ movq(i.OutputRegister(), rbp);
       break;
+#if V8_ENABLE_WEBASSEMBLY
     case kArchStackPointer:
       __ movq(i.OutputRegister(), rsp);
       break;
@@ -1555,6 +1549,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
         __ movq(rsp, i.InputOperand(0));
       }
       break;
+#endif  // V8_ENABLE_WEBASSEMBLY
     case kArchParentFramePointer:
       if (frame_access_state()->has_frame()) {
         __ movq(i.OutputRegister(), Operand(rbp, 0));
@@ -2544,17 +2539,8 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
         switch (lane_size) {
           case kL32: {
             // F32x4Abs
-            XMMRegister dst = i.OutputSimd128Register();
-            XMMRegister src = i.InputSimd128Register(0);
-            if (dst == src) {
-              __ Pcmpeqd(kScratchDoubleReg, kScratchDoubleReg);
-              __ Psrld(kScratchDoubleReg, uint8_t{1});
-              __ Andps(dst, kScratchDoubleReg);
-            } else {
-              __ Pcmpeqd(dst, dst);
-              __ Psrld(dst, uint8_t{1});
-              __ Andps(dst, src);
-            }
+            __ Absps(i.OutputSimd128Register(), i.InputSimd128Register(0),
+                     kScratchRegister);
             break;
           }
           case kL64: {
@@ -2609,17 +2595,8 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
         switch (lane_size) {
           case kL32: {
             // F32x4Neg
-            XMMRegister dst = i.OutputSimd128Register();
-            XMMRegister src = i.InputSimd128Register(0);
-            if (dst == src) {
-              __ Pcmpeqd(kScratchDoubleReg, kScratchDoubleReg);
-              __ Pslld(kScratchDoubleReg, uint8_t{31});
-              __ Xorps(dst, kScratchDoubleReg);
-            } else {
-              __ Pcmpeqd(dst, dst);
-              __ Pslld(dst, uint8_t{31});
-              __ Xorps(dst, src);
-            }
+            __ Negps(i.OutputSimd128Register(), i.InputSimd128Register(0),
+                     kScratchRegister);
             break;
           }
           case kL64: {
@@ -4972,27 +4949,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       XMMRegister dst = i.OutputSimd128Register();
       XMMRegister tmp = i.TempSimd128Register(0);
       XMMRegister tmp2 = i.TempSimd128Register(1);
-      // NAN->0, negative->0
-      __ Pxor(tmp2, tmp2);
-      __ Maxps(dst, tmp2);
-      // scratch: float representation of max_signed
-      __ Pcmpeqd(tmp2, tmp2);
-      __ Psrld(tmp2, uint8_t{1});  // 0x7fffffff
-      __ Cvtdq2ps(tmp2, tmp2);     // 0x4f000000
-      // tmp: convert (src-max_signed).
-      // Positive overflow lanes -> 0x7FFFFFFF
-      // Negative lanes -> 0
-      __ Movaps(tmp, dst);
-      __ Subps(tmp, tmp2);
-      __ Cmpleps(tmp2, tmp);
-      __ Cvttps2dq(tmp, tmp);
-      __ Pxor(tmp, tmp2);
-      __ Pxor(tmp2, tmp2);
-      __ Pmaxsd(tmp, tmp2);
-      // convert. Overflow lanes above max_signed will be 0x80000000
-      __ Cvttps2dq(dst, dst);
-      // Add (src-max_signed) for overflow lanes.
-      __ Paddd(dst, tmp);
+      __ I32x4TruncF32x4U(dst, dst, tmp, tmp2);
       break;
     }
     case kX64I32x8UConvertF32x8: {
@@ -6249,14 +6206,14 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       break;
     }
     case kX64I32x4TruncF64x2UZero: {
-      __ I32x4TruncF64x2UZero(i.OutputSimd128Register(),
-                              i.InputSimd128Register(0), kScratchRegister,
-                              kScratchDoubleReg);
+      __ I32x4TruncSatF64x2UZero(i.OutputSimd128Register(),
+                                 i.InputSimd128Register(0), kScratchDoubleReg,
+                                 kScratchRegister);
       break;
     }
     case kX64I32x4TruncF32x4U: {
       __ I32x4TruncF32x4U(i.OutputSimd128Register(), i.InputSimd128Register(0),
-                          kScratchRegister, kScratchDoubleReg);
+                          kScratchDoubleReg, i.TempSimd128Register(0));
       break;
     }
     case kX64Cvttps2dq: {
@@ -6850,11 +6807,20 @@ void CodeGenerator::AssembleArchTableSwitch(Instruction* instr) {
     // target = table + (target - table)
     __ addq(input, kScratchRegister);
     // Jump to the target.
+#ifdef V8_ENABLE_CET_IBT
+    // Add the notrack prefix to disable landing pad enforcement.
+    __ jmp(input, /*notrack=*/true);
+#else
     __ jmp(input);
+#endif
   } else {
     // For non builtins, the value in the table is 'target_address' (8 bytes)
     // jmp [table + index*8]
+#ifdef V8_ENABLE_CET_IBT
+    __ jmp(Operand(kScratchRegister, input, times_8, 0), /*notrack=*/true);
+#else
     __ jmp(Operand(kScratchRegister, input, times_8, 0));
+#endif
   }
 }
 
@@ -6950,7 +6916,18 @@ void CodeGenerator::AssembleConstructFrame() {
         // accessors.
         __ pushq(kWasmInstanceRegister);
       }
-      if (call_descriptor->IsWasmCapiFunction()) {
+      if (call_descriptor->IsWasmImportWrapper()) {
+        // If the wrapper is running on a secondary stack, it will switch to the
+        // central stack and fill these slots with the central stack pointer and
+        // secondary stack limit. Otherwise the slots remain empty.
+        static_assert(WasmImportWrapperFrameConstants::kCentralStackSPOffset ==
+                      -24);
+        static_assert(
+            WasmImportWrapperFrameConstants::kSecondaryStackLimitOffset == -32);
+        __ pushq(Immediate(kNullAddress));
+        __ pushq(Immediate(kNullAddress));
+
+      } else if (call_descriptor->IsWasmCapiFunction()) {
         // Reserve space for saving the PC later.
         __ AllocateStackSpace(kSystemPointerSize);
       }

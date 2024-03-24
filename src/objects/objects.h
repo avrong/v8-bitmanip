@@ -124,12 +124,6 @@ ShouldThrow GetShouldThrow(Isolate* isolate, Maybe<ShouldThrow> should_throw);
 // For a design overview, see https://goo.gl/Ph4CGz.
 class Object : public AllStatic {
  public:
-  // Whether the object is in the RO heap and the RO heap is shared, or in the
-  // writable shared heap.
-  static V8_INLINE bool InSharedHeap(Tagged<Object> obj);
-
-  static V8_INLINE bool InWritableSharedSpace(Tagged<Object> obj);
-
   enum class Conversion { kToNumber, kToNumeric };
 
   // ES6, #sec-isarray.  NOT to be confused with %_IsArray.
@@ -549,8 +543,10 @@ V8_EXPORT_PRIVATE std::ostream& operator<<(std::ostream& os,
                                            Tagged<Object> obj);
 
 struct Brief {
-  template <typename TObject>
-  explicit Brief(TObject v) : value{v.ptr()} {}
+  template <HeapObjectReferenceType kRefType>
+  explicit Brief(TaggedImpl<kRefType, Address> v) : value{v.ptr()} {}
+  template <typename T>
+  explicit Brief(T* v) : value{v->ptr()} {}
   // {value} is a tagged heap object reference (weak or strong), equivalent to
   // a MaybeObject's payload. It has a plain Address type to keep #includes
   // lightweight.

@@ -1,3 +1,7 @@
+// Copyright 2022 the V8 project authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 #include "src/codegen/assembler.h"
 #include "src/codegen/riscv/base-assembler-riscv.h"
 #include "src/codegen/riscv/constant-riscv-b.h"
@@ -8,11 +12,25 @@
 namespace v8 {
 namespace internal {
 class AssemblerRISCVB : public AssemblerRiscvBase {
+  // RV32B Extension
  public:
+  // Zba Extension
+#ifdef CAN_USE_ZBA_INSTRUCTIONS
+  void sh1add(Register rd, Register rs1, Register rs2);
+  void sh2add(Register rd, Register rs1, Register rs2);
+  void sh3add(Register rd, Register rs1, Register rs2);
+#ifdef V8_TARGET_ARCH_RISCV64
+  void adduw(Register rd, Register rs1, Register rs2);
+  void zextw(Register rd, Register rs1) { adduw(rd, rs1, zero_reg); }
+  void sh1adduw(Register rd, Register rs1, Register rs2);
+  void sh2adduw(Register rd, Register rs1, Register rs2);
+  void sh3adduw(Register rd, Register rs1, Register rs2);
+  void slliuw(Register rd, Register rs1, uint8_t shamt);
+#endif
+#endif
 
- // Zba
-
- // Zbb: basic
+#ifdef CAN_USE_ZBB_INSTRUCTIONS
+  // Zbb Extension
   // Logical with negate
   void andn(Register rd, Register rs1, Register rs2);
   void orn(Register rd, Register rs1, Register rs2);
@@ -35,9 +53,24 @@ class AssemblerRISCVB : public AssemblerRiscvBase {
   void min(Register rd, Register rs1, Register rs2);
   void minu(Register rd, Register rs1, Register rs2);
   // Sign- and zero-extension
-  void sext_b(Register rd, Register rs);
-  void sext_h(Register rd, Register rs);
-  void zext_h(Register rd, Register rs);
+  void sextb(Register rd, Register rs);
+  void sexth(Register rd, Register rs);
+  void zexth(Register rd, Register rs);
+
+  void rev8(Register rd, Register rs);
+#endif
+
+#ifdef CAN_USE_ZBS_INSTRUCTIONS
+  // Zbs
+  void bclr(Register rd, Register rs1, Register rs2);
+  void bclri(Register rd, Register rs1, uint8_t shamt);
+  void bext(Register rd, Register rs1, Register rs2);
+  void bexti(Register rd, Register rs1, uint8_t shamt);
+  void binv(Register rd, Register rs1, Register rs2);
+  void binvi(Register rd, Register rs1, uint8_t shamt);
+  void bset(Register rd, Register rs1, Register rs2);
+  void bseti(Register rd, Register rs1, uint8_t shamt);
+#endif
 
  // Zbb: bitwise rotation
 

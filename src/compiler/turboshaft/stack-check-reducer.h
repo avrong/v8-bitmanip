@@ -9,6 +9,7 @@
 #include "src/compiler/turboshaft/graph.h"
 #include "src/compiler/turboshaft/index.h"
 #include "src/compiler/turboshaft/operations.h"
+#include "src/compiler/turboshaft/phase.h"
 #include "src/compiler/turboshaft/uniform-reducer-adapter.h"
 
 namespace v8::internal::compiler::turboshaft {
@@ -29,8 +30,10 @@ class StackCheckReducer : public Next {
       return OpIndex::Invalid();
     }
 #endif  // V8_ENABLE_WEBASSEMBLY
+    // Loads of the stack limit should not be load-eliminated as it can be
+    // modified by another thread.
     V<WordPtr> limit = __ Load(
-        __ LoadRootRegister(), LoadOp::Kind::RawAligned(),
+        __ LoadRootRegister(), LoadOp::Kind::RawAligned().NotLoadEliminable(),
         MemoryRepresentation::PointerSized(), IsolateData::jslimit_offset());
     compiler::StackCheckKind check_kind =
         origin == StackCheckOp::CheckOrigin::kFromJS
@@ -63,7 +66,12 @@ class StackCheckReducer : public Next {
                 StubCallMode::kCallWasmRuntimeStub);  // stub call mode
         const TSCallDescriptor* ts_call_descriptor = TSCallDescriptor::Create(
             call_descriptor, compiler::CanThrow::kNo, __ graph_zone());
-        __ Call(builtin, {}, ts_call_descriptor);
+        // Pass custom effects to the `Call` node to mark it as non-writing.
+        __ Call(builtin, {}, ts_call_descriptor,
+                OpEffects()
+                    .CanReadMemory()
+                    .RequiredWhenUnused()
+                    .CanCreateIdentity());
       }
 #endif  // V8_ENABLE_WEBASSEMBLY
     }

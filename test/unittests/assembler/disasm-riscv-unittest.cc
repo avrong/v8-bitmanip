@@ -40,7 +40,7 @@
 namespace v8 {
 namespace internal {
 
-using DisasmRiscv64Test = TestWithIsolate;
+using DisasmRiscvTest = TestWithIsolate;
 
 bool prev_instr_compact_branch = false;
 
@@ -108,7 +108,7 @@ bool DisassembleAndCompare(uint8_t* pc, const char* compare_string) {
     FATAL("RISCV Disassembler tests failed.\n"); \
   }
 
-TEST_F(DisasmRiscv64Test, Arith) {
+TEST_F(DisasmRiscvTest, Arith) {
   SET_UP();
 
   // Arithmetic with immediate
@@ -136,53 +136,69 @@ TEST_F(DisasmRiscv64Test, Arith) {
   COMPARE(sra(a0, s3, s4), "4149d533       sra       a0, s3, s4");
   COMPARE(or_(a0, s3, s4), "0149e533       or        a0, s3, s4");
   COMPARE(and_(a0, s3, s4), "0149f533       and       a0, s3, s4");
-
   VERIFY_RUN();
 }
 
-TEST_F(DisasmRiscv64Test, RVB) {
-  // -- Bit-Manipulation ISA-extensions --
-  i::v8_flags.riscv_bitmanip = true;
+TEST_F(DisasmRiscvTest, RVB) {
   SET_UP();
+  i::v8_flags.riscv_bitmanip = true;
 
-  // -- Zba --
+#ifdef CAN_USE_ZBS_INSTRUCTIONS
+  COMPARE(sh1add(s6, t1, t5), "21e32b33       sh1add    s6, t1, t5");
+  COMPARE(sh2add(s7, t1, t2), "20734bb3       sh2add    s7, t1, t2");
+  COMPARE(sh3add(s4, t1, t3), "21c36a33       sh3add    s4, t1, t3");
 
-  // -- Zbb: basic --
-  // Logical with negate
+#ifdef V8_TARGET_ARCH_RISCV64
+  COMPARE(adduw(s6, t1, t5), "09e30b3b       add.uw    s6, t1, t5");
+  COMPARE(zextw(s6, t1), "08030b3b       zext.w    s6, t1");
+  COMPARE(sh1adduw(s6, t1, t5), "21e32b3b       sh1add.uw s6, t1, t5");
+  COMPARE(sh2adduw(s7, t1, t2), "20734bbb       sh2add.uw s7, t1, t2");
+  COMPARE(sh3adduw(s4, t1, t3), "21c36a3b       sh3add.uw s4, t1, t3");
+  COMPARE(slliuw(s6, t1, 10), "08a31b1b       slli.uw   s6, t1, 10");
+#endif
+#endif
+
+#ifdef CAN_USE_ZBB_INSTRUCTIONS
   COMPARE(andn(a0, s3, s4), "4149f533       andn      a0, s3, s4");
-  COMPARE(orn(a0, s3, s4),  "4149e533       orn       a0, s3, s4");
+  COMPARE(orn(a0, s3, s4), "4149e533       orn       a0, s3, s4");
   COMPARE(xnor(a0, s3, s4), "4149c533       xnor      a0, s3, s4");
-  // Count leading/trailing zero bits
+
   COMPARE(clz(a0, s3), "60099513       clz       a0, s3");
   COMPARE(ctz(a0, s3), "60199513       ctz       a0, s3");
 #ifdef V8_TARGET_ARCH_RISCV64
   COMPARE(clzw(a1, s3), "6009959b       clzw      a1, s3");
   COMPARE(ctzw(a0, s2), "6019151b       ctzw      a0, s2");
 #endif
-  // Count population
-  COMPARE(cpop(a0, s2),  "60291513       cpop      a0, s2");
-#ifdef V8_TARGET_ARCH_RISCV64
-  COMPARE(cpopw(a0, s2), "6029151b       cpopw     a0, s2");
-#endif
-  // Integer minimum/maximum
-  COMPARE(max(a1, s3, t0),  "0a59e5b3       max       a1, s3, t0");
+  COMPARE(max(a1, s3, t0), "0a59e5b3       max       a1, s3, t0");
   COMPARE(maxu(a0, s2, a1), "0ab97533       maxu      a0, s2, a1");
-  COMPARE(min(a1, s3, fp),  "0a89c5b3       min       a1, s3, fp");
+  COMPARE(min(a1, s3, fp), "0a89c5b3       min       a1, s3, fp");
   COMPARE(minu(a0, s2, sp), "0a295533       minu      a0, s2, sp");
-  // Sign- and zero-extension
-  COMPARE(sext_b(a0, s2), "60491513       sext.b    a0, s2");
-  COMPARE(sext_h(a1, s3), "60599593       sext.h    a1, s3");
-#ifdef V8_TARGET_ARCH_RISCV64
-  COMPARE(zext_h(a0, s2), "0809453b       zext.h    a0, s2");
-#else
-  COMPARE(zext_h(a0, s2), "08094533       zext.h    a0, s2");
-#endif
-  // -- Zbb: bitwise rotation --
 
+  COMPARE(sextb(a0, s2), "60491513       sext.b    a0, s2");
+  COMPARE(sexth(a1, s3), "60599593       sext.h    a1, s3");
+#ifdef V8_TARGET_ARCH_RISCV64
+  COMPARE(zexth(a0, s2), "0809453b       zext.h    a0, s2");
+  COMPARE(rev8(a0, s2), "6b895513       rev8      a0, s2");
+#else
+  COMPARE(zexth(a0, s2), "08094533       zext.h    a0, s2");
+  COMPARE(rev8(a0, s2), "69895513       rev8      a0, s2");
+#endif
+#endif
+
+#ifdef CAN_USE_ZBS_INSTRUCTIONS
+  COMPARE(bclr(a0, s2, s1), "48991533       bclr      a0, s2, s1");
+  COMPARE(bclri(a0, s1, 3), "48349513       bclri     a0, s1, 3");
+  COMPARE(bext(a0, s2, s1), "48995533       bext      a0, s2, s1");
+  COMPARE(bexti(a0, s1, 3), "4834d513       bexti     a0, s1, 3");
+  COMPARE(binv(a0, s2, s1), "68991533       binv      a0, s2, s1");
+  COMPARE(binvi(a0, s1, 3), "68349513       binvi     a0, s1, 3");
+  COMPARE(bset(a0, s2, s1), "28991533       bset      a0, s2, s1");
+  COMPARE(bseti(a0, s1, 3), "28349513       bseti     a0, s1, 3");
+#endif
   VERIFY_RUN();
 }
 
-TEST_F(DisasmRiscv64Test, LD_ST) {
+TEST_F(DisasmRiscvTest, LD_ST) {
   SET_UP();
   // Loads
   COMPARE(lb(t0, a0, 0), "00050283       lb        t0, 0(a0)");
@@ -199,7 +215,7 @@ TEST_F(DisasmRiscv64Test, LD_ST) {
   VERIFY_RUN();
 }
 
-TEST_F(DisasmRiscv64Test, MISC) {
+TEST_F(DisasmRiscvTest, MISC) {
   SET_UP();
 
   COMPARE(lui(sp, 0x64), "00064137       lui       sp, 0x64");
@@ -235,7 +251,7 @@ TEST_F(DisasmRiscv64Test, MISC) {
   VERIFY_RUN();
 }
 
-TEST_F(DisasmRiscv64Test, CSR) {
+TEST_F(DisasmRiscvTest, CSR) {
   SET_UP();
 
   COMPARE(csrrw(a0, csr_fflags, t3), "001e1573       fsflags   a0, t3");
@@ -251,7 +267,7 @@ TEST_F(DisasmRiscv64Test, CSR) {
   VERIFY_RUN();
 }
 #ifdef V8_TARGET_ARCH_RISCV64
-TEST_F(DisasmRiscv64Test, RV64I) {
+TEST_F(DisasmRiscvTest, RV64I) {
   SET_UP();
 
   COMPARE(lwu(a0, s3, -268), "ef49e503       lwu       a0, -268(s3)");
@@ -270,7 +286,7 @@ TEST_F(DisasmRiscv64Test, RV64I) {
   VERIFY_RUN();
 }
 #endif
-TEST_F(DisasmRiscv64Test, RV32M) {
+TEST_F(DisasmRiscvTest, RV32M) {
   SET_UP();
 
   COMPARE(mul(a0, s3, t4), "03d98533       mul       a0, s3, t4");
@@ -285,7 +301,7 @@ TEST_F(DisasmRiscv64Test, RV32M) {
   VERIFY_RUN();
 }
 #ifdef V8_TARGET_ARCH_RISCV64
-TEST_F(DisasmRiscv64Test, RV64M) {
+TEST_F(DisasmRiscvTest, RV64M) {
   SET_UP();
 
   COMPARE(mulw(a0, s3, s4), "0349853b       mulw      a0, s3, s4");
@@ -297,7 +313,7 @@ TEST_F(DisasmRiscv64Test, RV64M) {
   VERIFY_RUN();
 }
 #endif
-TEST_F(DisasmRiscv64Test, RV32A) {
+TEST_F(DisasmRiscvTest, RV32A) {
   SET_UP();
   // RV32A Standard Extension
   COMPARE(lr_w(true, false, a0, s3), "1409a52f       lr.w.aq    a0, (s3)");
@@ -324,7 +340,7 @@ TEST_F(DisasmRiscv64Test, RV32A) {
   VERIFY_RUN();
 }
 #ifdef V8_TARGET_ARCH_RISCV64
-TEST_F(DisasmRiscv64Test, RV64A) {
+TEST_F(DisasmRiscvTest, RV64A) {
   SET_UP();
 
   COMPARE(lr_d(true, true, a0, s3), "1609b52f       lr.d.aqrl a0, (s3)");
@@ -351,7 +367,7 @@ TEST_F(DisasmRiscv64Test, RV64A) {
   VERIFY_RUN();
 }
 #endif
-TEST_F(DisasmRiscv64Test, RV32F) {
+TEST_F(DisasmRiscvTest, RV32F) {
   SET_UP();
   // RV32F Standard Extension
   COMPARE(flw(fa0, s3, -268), "ef49a507       flw       fa0, -268(s3)");
@@ -387,7 +403,7 @@ TEST_F(DisasmRiscv64Test, RV32F) {
   VERIFY_RUN();
 }
 #ifdef V8_TARGET_ARCH_RISCV64
-TEST_F(DisasmRiscv64Test, RV64F) {
+TEST_F(DisasmRiscvTest, RV64F) {
   SET_UP();
   // RV64F Standard Extension (in addition to RV32F)
   COMPARE(fcvt_l_s(a0, ft8, RNE), "c02e0553       fcvt.l.s  [RNE] a0, ft8");
@@ -397,7 +413,7 @@ TEST_F(DisasmRiscv64Test, RV64F) {
   VERIFY_RUN();
 }
 #endif
-TEST_F(DisasmRiscv64Test, RV32D) {
+TEST_F(DisasmRiscvTest, RV32D) {
   SET_UP();
   // RV32D Standard Extension
   COMPARE(fld(ft0, s3, -268), "ef49b007       fld       ft0, -268(s3)");
@@ -434,7 +450,7 @@ TEST_F(DisasmRiscv64Test, RV32D) {
   VERIFY_RUN();
 }
 #ifdef V8_TARGET_ARCH_RISCV64
-TEST_F(DisasmRiscv64Test, RV64D) {
+TEST_F(DisasmRiscvTest, RV64D) {
   SET_UP();
   // RV64D Standard Extension (in addition to RV32D)
   COMPARE(fcvt_l_d(a0, ft8, RMM), "c22e4553       fcvt.l.d  [RMM] a0, ft8");
@@ -447,7 +463,7 @@ TEST_F(DisasmRiscv64Test, RV64D) {
 }
 #endif
 
-TEST_F(DisasmRiscv64Test, PSEUDO) {
+TEST_F(DisasmRiscvTest, PSEUDO) {
   SET_UP();
   // pseodu instructions according to rISCV assembly programmer's handbook
   COMPARE(nop(), "00000013       nop");
@@ -510,7 +526,7 @@ TEST_F(DisasmRiscv64Test, PSEUDO) {
   VERIFY_RUN();
 }
 #ifdef V8_TARGET_ARCH_RISCV64
-TEST_F(DisasmRiscv64Test, RV64C) {
+TEST_F(DisasmRiscvTest, RV64C) {
   i::v8_flags.riscv_c_extension = true;
   SET_UP();
 
@@ -562,7 +578,7 @@ TEST_F(DisasmRiscv64Test, RV64C) {
 }
 #endif
 /*
-TEST_F(DisasmRiscv64Test,  Previleged) {
+TEST_F(DisasmRiscvTest,  Previleged) {
   SET_UP();
   // Privileged
   COMPARE(uret(), "");
@@ -574,7 +590,7 @@ TEST_F(DisasmRiscv64Test,  Previleged) {
 }
 */
 
-TEST_F(DisasmRiscv64Test, RVV) {
+TEST_F(DisasmRiscvTest, RVV) {
   if (!CpuFeatures::IsSupported(RISCV_SIMD)) return;
   SET_UP();
   COMPARE(VU.set(kScratchReg, E64, m1),
