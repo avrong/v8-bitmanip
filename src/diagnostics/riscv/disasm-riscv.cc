@@ -914,15 +914,6 @@ void Decoder::DecodeRType(Instruction* instr) {
     case RO_AND:
       Format(instr, "and       'rd, 'rs1, 'rs2");
       break;
-    case RO_ANDN:
-      Format(instr, "andn      'rd, 'rs1, 'rs2");
-      break;
-    case RO_ORN:
-      Format(instr, "orn       'rd, 'rs1, 'rs2");
-      break;
-    case RO_XNOR:
-      Format(instr, "xnor      'rd, 'rs1, 'rs2");
-      break;
 #ifdef V8_TARGET_ARCH_64_BIT
     case RO_ADDW:
       Format(instr, "addw      'rd, 'rs1, 'rs2");
@@ -1001,21 +992,6 @@ void Decoder::DecodeRType(Instruction* instr) {
       Format(instr, "sh3add.uw 'rd, 'rs1, 'rs2");
       break;
 #endif /*V8_TARGET_ARCH_64_BIT*/
-    case RO_MAX:
-      Format(instr, "max       'rd, 'rs1, 'rs2");
-      break;
-    case RO_MAXU:
-      Format(instr, "maxu      'rd, 'rs1, 'rs2");
-      break;
-    case RO_MIN:
-      Format(instr, "min       'rd, 'rs1, 'rs2");
-      break;
-    case RO_MINU:
-      Format(instr, "minu      'rd, 'rs1, 'rs2");
-      break;
-    case RO_ZEXTH:
-      Format(instr, "zext.h    'rd, 'rs1");
-      break;
     case RO_BCLR:
       Format(instr, "bclr      'rd, 'rs1, 'rs2");
       break;
@@ -1555,27 +1531,6 @@ void Decoder::DecodeIType(Instruction* instr) {
         case RO_BSETI:
           Format(instr, "bseti     'rd, 'rs1, 's64");
           break;
-        case OP_COUNT:
-          switch (instr->Shamt()) {
-            case 0:
-              Format(instr, "clz       'rd, 'rs1");
-              break;
-            case 1:
-              Format(instr, "ctz       'rd, 'rs1");
-              break;
-            case 2:
-              Format(instr, "cpop      'rd, 'rs1");
-              break;
-            case 4:
-              Format(instr, "sext.b    'rd, 'rs1");
-              break;
-            case 5:
-              Format(instr, "sext.h    'rd, 'rs1");
-              break;
-            default:
-              UNSUPPORTED_RISCV();
-          }
-          break;
         default:
           UNSUPPORTED_RISCV();
       }
@@ -1615,22 +1570,6 @@ void Decoder::DecodeIType(Instruction* instr) {
         case RO_SLLIW:
           Format(instr, "slliw     'rd, 'rs1, 's32");
           break;
-        case OP_COUNTW: {
-          switch (instr->Shamt()) {
-            case 0:
-              Format(instr, "clzw      'rd, 'rs1");
-              break;
-            case 1:
-              Format(instr, "ctzw      'rd, 'rs1");
-              break;
-            case 2:
-              Format(instr, "cpopw     'rd, 'rs1");
-              break;
-            default:
-              UNSUPPORTED_RISCV();
-          }
-          break;
-        }
         default:
           UNSUPPORTED_RISCV();
       }
@@ -2095,6 +2034,12 @@ void Decoder::DecodeCBType(Instruction* instr) {
 // (B)itmanip extension
 // use `return true` instead of `break` in cases
 bool Decoder::DecodeBRType(Instruction* instr) {
+  // Zbb: basic -- Zero-extension
+  if ((instr->InstructionBits() & (kITypeMask | kImm12Mask)) == RO_ZEXTH) {
+    Format(instr, "zext.h    'rd, 'rs1");
+    return true;
+  }
+
   switch (instr->InstructionBits() & kRTypeMask) {
     // Zba
     case RO_SH1ADD:
@@ -2123,9 +2068,32 @@ bool Decoder::DecodeBRType(Instruction* instr) {
     case RO_SH3ADDUW:
       Format(instr, "sh3add.uw 'rd, 'rs1, 'rs2");
       return true;
-    #endif 
+    #endif
 
     // Zbb: basic
+    // Logical with negate
+    case RO_ANDN:
+      Format(instr, "andn      'rd, 'rs1, 'rs2");
+      return true;
+    case RO_ORN:
+      Format(instr, "orn       'rd, 'rs1, 'rs2");
+      return true;
+    case RO_XNOR:
+      Format(instr, "xnor      'rd, 'rs1, 'rs2");
+      return true;
+    // Integer minimum/maximum
+    case RO_MAX:
+      Format(instr, "max       'rd, 'rs1, 'rs2");
+      return true;
+    case RO_MAXU:
+      Format(instr, "maxu      'rd, 'rs1, 'rs2");
+      return true;
+    case RO_MIN:
+      Format(instr, "min       'rd, 'rs1, 'rs2");
+      return true;
+    case RO_MINU:
+      Format(instr, "minu      'rd, 'rs1, 'rs2");
+      return true;
 
     // Zbb: bitwise rotation
 
@@ -2160,7 +2128,40 @@ bool Decoder::DecodeBIType(Instruction* instr) {
 
 bool Decoder::DecodeBIHType(Instruction* instr) {
   switch (instr->InstructionBits() & (kITypeMask | kImm12Mask)) {
+    // Zba
+
     // Zbb: basic
+    // Count leading/trailing zero bits
+    case RO_CLZ:
+      Format(instr, "clz       'rd, 'rs1");
+      return true;
+    case RO_CTZ:
+      Format(instr, "ctz       'rd, 'rs1");
+      return true;
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CLZW:
+      Format(instr, "clzw      'rd, 'rs1");
+      return true;
+    case RO_CTZW:
+      Format(instr, "ctzw      'rd, 'rs1");
+      return true;
+#endif /*V8_TARGET_ARCH_64_BIT*/
+    // Count population
+    case RO_CPOP:
+      Format(instr, "cpop      'rd, 'rs1");
+      return true;
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CPOPW:
+      Format(instr, "cpopw     'rd, 'rs1");
+      return true;
+#endif /*V8_TARGET_ARCH_64_BIT*/
+    // Sign-extension
+    case RO_SEXTB:
+      Format(instr, "sext.b    'rd, 'rs1");
+      return true;
+    case RO_SEXTH:
+      Format(instr, "sext.h    'rd, 'rs1");
+      return true;
 
     // Zbb: bitwise rotation
 

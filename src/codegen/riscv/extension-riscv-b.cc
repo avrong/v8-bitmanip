@@ -39,65 +39,75 @@ void AssemblerRISCVB::slliuw(Register rd, Register rs1, uint8_t shamt) {
 
 #endif  // CAN_USE_ZBA_INSTRUCTIONS
 
-//Zbb
+// Zbb
 #ifdef CAN_USE_ZBB_INSTRUCTIONS
+// Logical with negate
 void AssemblerRISCVB::andn(Register rd, Register rs1, Register rs2) {
-  GenInstrALU_rr(0b0100000, 0b111, rd, rs1, rs2);
+  GenInstrR(0b0100000, 0b111, OP, rd, rs1, rs2);
 }
 void AssemblerRISCVB::orn(Register rd, Register rs1, Register rs2) {
-  GenInstrALU_rr(0b0100000, 0b110, rd, rs1, rs2);
+  GenInstrR(0b0100000, 0b110, OP, rd, rs1, rs2);
 }
 void AssemblerRISCVB::xnor(Register rd, Register rs1, Register rs2) {
-  GenInstrALU_rr(0b0100000, 0b100, rd, rs1, rs2);
+  GenInstrR(0b0100000, 0b100, OP, rd, rs1, rs2);
 }
 
+// Count leading/trailing zero bits
 void AssemblerRISCVB::clz(Register rd, Register rs) {
-  GenInstrIShiftW(0b0110000, 0b001, OP_IMM, rd, rs, 0);
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000000);
 }
 void AssemblerRISCVB::ctz(Register rd, Register rs) {
-  GenInstrIShiftW(0b0110000, 0b001, OP_IMM, rd, rs, 1);
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000001);
 }
-void AssemblerRISCVB::cpop(Register rd, Register rs) {
-  GenInstrIShiftW(0b0110000, 0b001, OP_IMM, rd, rs, 2);
-}
-#ifdef V8_TARGET_ARCH_RISCV64
+#if V8_TARGET_ARCH_RISCV64
 void AssemblerRISCVB::clzw(Register rd, Register rs) {
-  GenInstrIShiftW(0b0110000, 0b001, OP_IMM_32, rd, rs, 0);
+  GenInstrI(0b001, OP_IMM_32, rd, rs, 0b011000000000);
 }
 void AssemblerRISCVB::ctzw(Register rd, Register rs) {
-  GenInstrIShiftW(0b0110000, 0b001, OP_IMM_32, rd, rs, 1);
-}
-void AssemblerRISCVB::cpopw(Register rd, Register rs) {
-  GenInstrIShiftW(0b0110000, 0b001, OP_IMM_32, rd, rs, 2);
+  GenInstrI(0b001, OP_IMM_32, rd, rs, 0b011000000001);
 }
 #endif
 
+// Count population
+void AssemblerRISCVB::cpop(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000010);
+}
+#if V8_TARGET_ARCH_RISCV64
+void AssemblerRISCVB::cpopw(Register rd, Register rs) {
+  GenInstrI(0b001, OP_IMM_32, rd, rs, 0b011000000010);
+}
+#endif
+
+// Integer minimum/maximum
 void AssemblerRISCVB::max(Register rd, Register rs1, Register rs2) {
-  GenInstrALU_rr(0b0000101, 0b110, rd, rs1, rs2);
+  GenInstrR(0b0000101, 0b110, OP, rd, rs1, rs2);
 }
 void AssemblerRISCVB::maxu(Register rd, Register rs1, Register rs2) {
-  GenInstrALU_rr(0b0000101, 0b111, rd, rs1, rs2);
+  GenInstrR(0b0000101, 0b111, OP, rd, rs1, rs2);
 }
 void AssemblerRISCVB::min(Register rd, Register rs1, Register rs2) {
-  GenInstrALU_rr(0b0000101, 0b100, rd, rs1, rs2);
+  GenInstrR(0b0000101, 0b100, OP, rd, rs1, rs2);
 }
 void AssemblerRISCVB::minu(Register rd, Register rs1, Register rs2) {
-  GenInstrALU_rr(0b0000101, 0b101, rd, rs1, rs2);
+  GenInstrR(0b0000101, 0b101, OP, rd, rs1, rs2);
 }
 
+// Sign- and zero-extension
 void AssemblerRISCVB::sextb(Register rd, Register rs) {
-  GenInstrIShiftW(0b0110000, 0b001, OP_IMM, rd, rs, 0b100);
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000100);
 }
 void AssemblerRISCVB::sexth(Register rd, Register rs) {
-  GenInstrIShiftW(0b0110000, 0b001, OP_IMM, rd, rs, 0b101);
+  GenInstrI(0b001, OP_IMM, rd, rs, 0b011000000101);
 }
+#ifdef V8_TARGET_ARCH_RISCV32
 void AssemblerRISCVB::zexth(Register rd, Register rs) {
-#ifdef V8_TARGET_ARCH_RISCV64
-  GenInstrALUW_rr(0b0000100, 0b100, rd, rs, zero_reg);
-#else
-  GenInstrALU_rr(0b0000100, 0b100, rd, rs, zero_reg);
-#endif
+  GenInstrI(0b100, OP, rd, rs, 0b000010000000);
 }
+#elif defined(V8_TARGET_ARCH_RISCV64)
+void AssemblerRISCVB::zexth(Register rd, Register rs) {
+  GenInstrI(0b100, OP_32, rd, rs, 0b000010000000);
+}
+#endif
 
 void AssemblerRISCVB::rev8(Register rd, Register rs) {
 #ifdef V8_TARGET_ARCH_RISCV64

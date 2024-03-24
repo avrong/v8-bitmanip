@@ -3515,15 +3515,6 @@ void Simulator::DecodeRVRType() {
       set_rd(rs1() & rs2());
       break;
     }
-    case RO_ANDN:
-      set_rd(rs1() & ~rs2());
-      break;
-    case RO_ORN:
-      set_rd(rs1() | (~rs2()));
-      break;
-    case RO_XNOR:
-      set_rd((~rs1()) ^ (~rs2()));
-      break;
 #ifdef V8_TARGET_ARCH_RISCV64
     case RO_ADDW: {
       set_rd(sext32(rs1() + rs2()));
@@ -3672,21 +3663,6 @@ void Simulator::DecodeRVRType() {
       break;
     }
 #endif /*V8_TARGET_ARCH_RISCV64*/
-    case RO_MAX:
-      set_rd(rs1() < rs2() ? rs2() : rs1());
-      break;
-    case RO_MAXU:
-      set_rd(reg_t(rs1()) < reg_t(rs2()) ? rs2() : rs1());
-      break;
-    case RO_MIN:
-      set_rd(rs1() < rs2() ? rs1() : rs2());
-      break;
-    case RO_MINU:
-      set_rd(reg_t(rs1()) < reg_t(rs2()) ? rs1() : rs2());
-      break;
-    case RO_ZEXTH:
-      set_rd(zext_xlen(uint16_t(rs1())));
-      break;
     case RO_BCLR: {
       sreg_t index = rs2() & (xlen - 1);
       set_rd(rs1() & ~(1l << index));
@@ -5030,52 +5006,6 @@ void Simulator::DecodeRVIType() {
           set_rd(rs1() | (1l << index));
           break;
         }
-        case OP_COUNT:
-          switch (instr_.Shamt()) {
-            case 0: {  // clz
-              sreg_t x = rs1();
-              int highest_setbit = -1;
-              for (auto i = xlen - 1; i >= 0; i--) {
-                if ((x & (1l << i))) {
-                  highest_setbit = i;
-                  break;
-                }
-              }
-              set_rd(xlen - 1 - highest_setbit);
-              break;
-            }
-            case 1: {  // ctz
-              sreg_t x = rs1();
-              int lowest_setbit = xlen;
-              for (auto i = 0; i < xlen; i++) {
-                if ((x & (1l << i))) {
-                  lowest_setbit = i;
-                  break;
-                }
-              }
-              set_rd(lowest_setbit);
-              break;
-            }
-            case 2: {  // cpop
-              int i = 0;
-              sreg_t n = rs1();
-              while (n) {
-                n &= (n - 1);
-                i++;
-              }
-              set_rd(i);
-              break;
-            }
-            case 4:
-              set_rd(int8_t(rs1()));
-              break;
-            case 5:
-              set_rd(int16_t(rs1()));
-              break;
-            default:
-              UNSUPPORTED_RISCV();
-          }
-          break;
         default:
           UNSUPPORTED_RISCV();
       }
@@ -5126,47 +5056,6 @@ void Simulator::DecodeRVIType() {
         case RO_SLLIW:
           set_rd(sext32(rs1() << shamt5()));
           break;
-        case OP_COUNTW: {
-          switch (instr_.Shamt()) {
-            case 0: {  // clzw
-              sreg_t x = rs1();
-              int highest_setbit = -1;
-              for (auto i = 31; i >= 0; i--) {
-                if ((x & (1l << i))) {
-                  highest_setbit = i;
-                  break;
-                }
-              }
-              set_rd(31 - highest_setbit);
-              break;
-            }
-            case 1: {  // ctzw
-              sreg_t x = rs1();
-              int lowest_setbit = 32;
-              for (auto i = 0; i < 32; i++) {
-                if ((x & (1l << i))) {
-                  lowest_setbit = i;
-                  break;
-                }
-              }
-              set_rd(lowest_setbit);
-              break;
-            }
-            case 2: {  // cpopw
-              int i = 0;
-              int32_t n = static_cast<int32_t>(rs1());
-              while (n) {
-                n &= (n - 1);
-                i++;
-              }
-              set_rd(i);
-              break;
-            }
-            default:
-              UNSUPPORTED_RISCV();
-          }
-          break;
-        }
         default:
           UNSUPPORTED_RISCV();
       }
@@ -5670,6 +5559,11 @@ void Simulator::DecodeCBType() {
 // (B)itmanip extension
 // use `return true` instead of `break` in cases
 bool Simulator::DecodeBRType() {
+  // Zbb: basic -- Zero-extension
+  if ((instr_.InstructionBits() & (kITypeMask | kImm12Mask)) == RO_ZEXTH) {
+    set_rd(zext_xlen(uint16_t(rs1())));
+    return true;
+  }
   switch (instr_.InstructionBits() & kRTypeMask) {
     // Zba
     case RO_SH1ADD:{
@@ -5704,6 +5598,36 @@ bool Simulator::DecodeBRType() {
     #endif
 
     // Zbb: basic
+    // Logical with negate
+    case RO_ANDN: {
+      set_rd(rs1() & ~rs2());
+      return true;
+    }
+    case RO_ORN: {
+      set_rd(rs1() | ~rs2());
+      return true;
+    }
+    case RO_XNOR: {
+      set_rd(~(rs1() ^ rs2()));
+      return true;
+    }
+    // Integer minimum/maximum
+    case RO_MAX: {
+      set_rd(rs1() > rs2() ? rs1() : rs2());
+      return true;
+    }
+    case RO_MAXU: {
+      set_rd( reg_t(rs1()) > reg_t(rs2()) ? rs1() : rs2());
+      return true;
+    }
+    case RO_MIN: {
+      set_rd(rs1() < rs2() ? rs1() : rs2());
+      return true;
+    }
+    case RO_MINU: {
+      set_rd( reg_t(rs1()) < reg_t(rs2()) ? rs1() : rs2());
+      return true;
+    }
 
     // Zbb: bitwise rotation
 
@@ -5738,7 +5662,78 @@ bool Simulator::DecodeBIType() {
 
 bool Simulator::DecodeBIHType() {
   switch (instr_.InstructionBits() & (kITypeMask | kImm12Mask)) {
+    // Zba
+
     // Zbb: basic
+    // Count leading/trailing zero bits
+    case RO_CLZ: {
+      sreg_t x = rs1();
+      int i;
+      for (i = xlen - 1; i > 0; i--) {
+        if (x & (1 << i)) break;
+      }
+      set_rd((xlen - 1) - i);
+      return true;
+    }
+    case RO_CTZ: {
+      sreg_t x = rs1();
+      int i;
+      for (i = 0; i < xlen; i++) {
+        if (x & (1 << i)) break;
+      }
+      set_rd(i);
+      return true;
+    }
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CLZW: {
+      sreg_t x = rs1();
+      int i;
+      for (i = 31; i > 0; i--) {
+        if (x & (1 << i)) break;
+      }
+      set_rd(31 - i);
+      return true;
+    }
+    case RO_CTZW: {
+      sreg_t x = rs1();
+      int i;
+      for (i = 0; i < 32; i++) {
+        if (x & (1 << i)) break;
+      }
+      set_rd(i);
+      return true;
+    }
+#endif /*V8_TARGET_ARCH_64_BIT*/
+    // Count population
+    case RO_CPOP: {
+      sreg_t x = rs1();
+      int bitcount = 0;
+      for (int i = 0; i < xlen; i++) {
+        if (x & (1 << i)) bitcount++;
+      }
+      set_rd(bitcount);
+      return true;
+    }
+#ifdef V8_TARGET_ARCH_64_BIT
+    case RO_CPOPW: {
+      sreg_t x = rs1();
+      int bitcount = 0;
+      for (int i = 0; i < 32; i++) {
+        if (x & (1 << i)) bitcount++;
+      }
+      set_rd(bitcount);
+      return true;
+    }
+#endif /*V8_TARGET_ARCH_64_BIT*/
+    // Sign- and zero-extension
+    case RO_SEXTB: {
+      set_rd(sext_xlen(int8_t(rs1())));
+      return true;
+    }
+    case RO_SEXTH: {
+      set_rd(sext_xlen(int16_t(rs1())));
+      return true;
+    }
 
     // Zbb: bitwise rotation
 
