@@ -1755,13 +1755,16 @@ void MacroAssembler::CalcScaledAddress(Register rd, Register rt, Register rs,
 #if V8_TARGET_ARCH_RISCV64
 void MacroAssembler::ByteSwap(Register rd, Register rs, int operand_size,
                               Register scratch) {
+  DCHECK(operand_size == 4 || operand_size == 8);
   if (CpuFeatures::IsSupported(ZBB)) {
-    rev8(rd, rs, scratch);
+    rev8(rd, rs);
+    if (operand_size == 4) {
+      srai(rd, rd, 32);
+    }
     return;
   }
   DCHECK_NE(scratch, rs);
   DCHECK_NE(scratch, rd);
-  DCHECK(operand_size == 4 || operand_size == 8);
   if (operand_size == 4) {
     // Uint32_t x1 = 0x00FF00FF;
     // x0 = (x0 << 16 | x0 >> 16);
@@ -1818,7 +1821,7 @@ void MacroAssembler::ByteSwap(Register rd, Register rs, int operand_size,
 void MacroAssembler::ByteSwap(Register rd, Register rs, int operand_size,
                               Register scratch) {
   if (CpuFeatures::IsSupported(ZBB)) {
-    rev8(rd, rs, scratch);
+    rev8(rd, rs);
     return;
   }
   DCHECK_NE(scratch, rs);
