@@ -1576,7 +1576,7 @@ void MacroAssembler::Sll64(Register rd, Register rs, const Operand& rt) {
 
 void MacroAssembler::Ror(Register rd, Register rs, const Operand& rt) {
   if (CpuFeatures::IsSupported(ZBB)) {
-    if (rs.is_reg()) {
+    if (rt.is_reg()) {
       rorw(rd, rs, rt.rm());
     } else {
       roriw(rd, rs, rt.immediate() % 32);
@@ -1609,10 +1609,11 @@ void MacroAssembler::Ror(Register rd, Register rs, const Operand& rt) {
 
 void MacroAssembler::Dror(Register rd, Register rs, const Operand& rt) {
   if (CpuFeatures::IsSupported(ZBB)) {
-    if (rs.is_reg())
+    if (rt.is_reg()) {
       ror(rd, rs, rt.rm());
-    else
+    } else {
       rori(rd, rs, rt.immediate() % 64);
+    }
     return
   }
   UseScratchRegisterScope temps(this);
@@ -1678,7 +1679,7 @@ void MacroAssembler::Srl32(Register rd, Register rs, const Operand& rt) {
 
 void MacroAssembler::Ror(Register rd, Register rs, const Operand& rt) {
   if (CpuFeatures::IsSupported(ZBB)) {
-    if (rs.is_reg())
+    if (rt.is_reg())
       ror(rd, rs, rt.rm());
     else
       rori(rd, rs, rt.immediate());
